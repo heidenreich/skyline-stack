@@ -62,6 +62,8 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 .toast span { font-size: 12px; color: var(--lamp); letter-spacing: .08em; }
 
 .overlay { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; }
+.overlay { pointer-events: none; }
+.overlay .card { pointer-events: auto; }
 .overlay.top { align-items: start; padding-top: calc(env(safe-area-inset-top, 0px) + 40px); }
 .card {
   width: min(100%, 360px); background: var(--glass); border: 1px solid var(--rule); border-radius: 6px;
@@ -114,6 +116,48 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 @keyframes blink { 50% { opacity: .3; } }
 @media (prefers-reduced-motion: reduce) { .letter.active, .board li.you { animation: none; } }
 @media (prefers-reduced-motion: reduce) { .toast, .hud { transition: none; } }
+.hud-btns { display: flex; gap: 8px; }
+.hud.dim .mute { pointer-events: none; }
+#retroBtn[aria-pressed="true"] { background: var(--lamp); color: var(--lamp-ink); border-color: var(--lamp); }
+
+/* Retro mode: pixel font everywhere, hard-edged boxes, CRT scanlines, attract-mode banner */
+canvas.pixel { image-rendering: pixelated; image-rendering: crisp-edges; }
+.crt {
+  position: fixed; inset: 0; pointer-events: none; z-index: 5;
+  background:
+    repeating-linear-gradient(to bottom, rgba(0, 0, 0, .28) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, .6) 100%);
+}
+.attract {
+  position: fixed; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 9vh);
+  text-align: center; pointer-events: none; font: 14px/1.8 var(--arcade); color: var(--lamp);
+  text-shadow: 3px 3px 0 #000; animation: blink 1.1s steps(2, start) infinite;
+}
+.attract small { display: block; font-size: 9px; color: var(--neon); }
+body.retro { --display: var(--arcade); --mono: var(--arcade); --glass: #05051a; --rule: #ffc95c; }
+body.retro .card {
+  border-width: 3px; border-radius: 0; gap: 16px; box-shadow: 6px 6px 0 rgba(0, 0, 0, .6);
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+body.retro .card h1, body.retro .card h2 { font-weight: 400; line-height: 1.3; }
+body.retro .card h1 { font-size: 22px; color: var(--lamp); }
+body.retro .card h2 { font-size: 30px; }
+body.retro .card h2 small { font-size: .45em; }
+body.retro .card p { font-size: 10px; line-height: 1.9; }
+body.retro .card p strong { font-weight: 400; color: var(--neon); }
+body.retro .eyebrow { font-size: 10px; letter-spacing: .08em; animation: blink 1.1s steps(2, start) infinite; }
+body.retro .stats { font-size: 9px; border-top-style: dashed; }
+body.retro .stats b { font-weight: 400; }
+body.retro .badge { font-size: 8px; border-radius: 0; font-weight: 400; }
+body.retro .go { font: 14px/1 var(--arcade); letter-spacing: .04em; border-radius: 0; box-shadow: inset -4px -4px 0 rgba(0, 0, 0, .3); }
+body.retro .ghost, body.retro .mute { font: 9px/1 var(--arcade); letter-spacing: .04em; border-radius: 0; }
+body.retro .floors { font-weight: 400; font-size: 34px; line-height: 1; }
+body.retro .floors span { font-size: 9px; letter-spacing: .1em; color: var(--neon); }
+body.retro .meters { font-size: 10px; font-weight: 400; }
+body.retro .toast b { font-weight: 400; font-size: 13px; line-height: 1.6; text-shadow: 3px 3px 0 #000; }
+body.retro .toast span { font-size: 9px; }
+body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
+@media (prefers-reduced-motion: reduce) { body.retro .eyebrow, .attract { animation: none; } }
 </style>
 </head>
 <body>
@@ -121,23 +165,28 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 <canvas id="c" aria-label="Skyline Stack game"></canvas>
 
 <div class="hud" id="hud">
-  <div class="floors" id="floors">0<span>FLOORS</span></div>
+  <div class="floors" id="floors">0<span data-retro="1UP">FLOORS</span></div>
   <div class="hud-right">
     <div class="meters" id="meters">0.0 m</div>
-    <button class="mute" id="mute" type="button" aria-pressed="false">Sound on</button>
+    <div class="hud-btns">
+      <button class="mute" id="retroBtn" type="button" aria-pressed="false">Retro</button>
+      <button class="mute" id="mute" type="button" aria-pressed="false">Sound on</button>
+    </div>
   </div>
 </div>
+
+<div class="attract" id="attract" hidden>TAP TO PLAY<small>INSERT COIN</small></div>
 
 <div class="toast" id="toast" aria-live="polite"><b id="toastTitle"></b><span id="toastSub"></span></div>
 
 <div class="overlay" id="startScreen">
   <div class="card">
-    <div class="eyebrow">Tap to build</div>
+    <div class="eyebrow" data-retro="INSERT COIN">Tap to build</div>
     <h1>Skyline Stack</h1>
-    <p>Each floor slides in from the side. <strong>Tap to drop it.</strong> Whatever hangs over the edge gets cut off. Land it dead-on three times in a row and your tower gets wider again.</p>
-    <div class="stats"><span>Your best</span><b id="startBest">No tower yet</b></div>
-    <button class="go" id="startBtn" type="button">Start building</button>
-    <button class="ghost" id="startScores" type="button">High scores</button>
+    <p data-retro="TAP TO DROP EACH FLOOR. LAND 3 &lt;strong&gt;PERFECT&lt;/strong&gt; IN A ROW TO GROW WIDER!">Each floor slides in from the side. <strong>Tap to drop it.</strong> Whatever hangs over the edge gets cut off. Land it dead-on three times in a row and your tower gets wider again.</p>
+    <div class="stats"><span data-retro="HI">Your best</span><b id="startBest">No tower yet</b></div>
+    <button class="go" id="startBtn" type="button" data-retro="PRESS START">Start building</button>
+    <button class="ghost" id="startScores" type="button" data-retro="HI-SCORES">High scores</button>
   </div>
 </div>
 
@@ -145,15 +194,15 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   <div class="card">
     <div class="eyebrow" id="entryRank">New high score</div>
     <h2 id="entryFloors">0 <small>floors</small></h2>
-    <p>Enter your initials</p>
+    <p data-retro="ENTER YOUR INITIALS">Enter your initials</p>
     <div class="initials" id="initials"></div>
-    <button class="go" id="entryOk" type="button">Save score</button>
+    <button class="go" id="entryOk" type="button" data-retro="ENTER">Save score</button>
   </div>
 </div>
 
 <div class="overlay top" id="boardScreen" hidden>
   <div class="card">
-    <div class="eyebrow">Top 10 on this phone</div>
+    <div class="eyebrow" data-retro="BEST BUILDERS">Top 10 on this phone</div>
     <h1 class="arcade-title">High Scores</h1>
     <ol class="board" id="board"></ol>
     <button class="go" id="boardGo" type="button">Build again</button>
@@ -162,15 +211,17 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 
 <div class="overlay top" id="overScreen" hidden>
   <div class="card">
-    <div class="eyebrow">Topped out</div>
-    <span class="badge" id="newBest" hidden>New record</span>
+    <div class="eyebrow" data-retro="GAME OVER">Topped out</div>
+    <span class="badge" id="newBest" hidden data-retro="NEW RECORD!">New record</span>
     <h2 id="overFloors">0 <small>floors</small></h2>
     <p id="overLine"></p>
-    <div class="stats"><span>Best</span><b id="overBest">0 floors</b></div>
-    <button class="go" id="againBtn" type="button">Build again</button>
-    <button class="ghost" id="overScores" type="button">High scores</button>
+    <div class="stats"><span data-retro="HI">Best</span><b id="overBest">0 floors</b></div>
+    <button class="go" id="againBtn" type="button" data-retro="PLAY AGAIN">Build again</button>
+    <button class="ghost" id="overScores" type="button" data-retro="HI-SCORES">High scores</button>
   </div>
 </div>
+
+<div class="crt" id="crt" hidden></div>
 
 <script>
 (() => {
@@ -193,8 +244,20 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   let state = 'ready', stack = [], cur = null, debris = [], pops = [];
   let camY = 0, zoom = 1, base = 0.78, combo = 0, nextMark = 0, seedN = 1;
   let skyline = [], stars = [];
-  let best = 0, muted = false;
-  try { best = +localStorage.getItem('skyline-best') || 0; muted = localStorage.getItem('skyline-muted') === '1'; } catch (e) {}
+  let best = 0, muted = false, retro = false, PX = 1;
+  let attract = 'start', attractT = 0;
+  try {
+    best = +localStorage.getItem('skyline-best') || 0;
+    muted = localStorage.getItem('skyline-muted') === '1';
+    retro = localStorage.getItem('skyline-retro') === '1';
+  } catch (e) {}
+  // Retro mode floor colors, 8-bit console style: [body, top edge, bottom edge]
+  const RPAL = [
+    ['#0058f8', '#3cbcfc', '#0000a8'], ['#d82800', '#fc7460', '#881400'], ['#00a800', '#58d854', '#005800'],
+    ['#e45c10', '#fca044', '#881400'], ['#6844fc', '#9878f8', '#4428bc'], ['#008888', '#00e8d8', '#004058'],
+    ['#d800cc', '#f878f8', '#940084']
+  ];
+  const say = (modern, old) => retro ? old : modern;
 
   // ---------- high scores (top 10, stored on this device) ----------
   const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -228,9 +291,53 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 3);
     W = window.innerWidth; H = window.innerHeight;
-    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (retro) {
+      // Draw at roughly 130 pixels across and let the browser scale it up with hard edges.
+      PX = Math.max(2, Math.floor(W / 130));
+      cv.width = Math.ceil(W / PX); cv.height = Math.ceil(H / PX);
+      ctx.setTransform(1 / PX, 0, 0, 1 / PX, 0, 0);
+    } else {
+      PX = 1;
+      cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    ctx.imageSmoothingEnabled = !retro;
     s = Math.min(W / 380, H / 600);
+  }
+
+  const snap = v => retro ? Math.round(v / PX) * PX : v;
+  // fillRect that lands on the chunky pixel grid in retro mode.
+  function fr(x, y, w, h) {
+    if (retro) {
+      const x0 = snap(x), y0 = snap(y);
+      w = Math.max(PX, snap(x + w) - x0); h = Math.max(PX, snap(y + h) - y0);
+      x = x0; y = y0;
+    }
+    ctx.fillRect(x, y, w, h);
+  }
+
+  function setRetro(v) {
+    retro = v;
+    document.body.classList.toggle('retro', v);
+    cv.classList.toggle('pixel', v);
+    $('crt').hidden = !v;
+    $('retroBtn').setAttribute('aria-pressed', String(v));
+    document.querySelectorAll('[data-retro]').forEach(el => {
+      if (el.dataset.modern === undefined) el.dataset.modern = el.innerHTML;
+      el.innerHTML = v ? el.dataset.retro : el.dataset.modern;
+    });
+    try { localStorage.setItem('skyline-retro', v ? '1' : '0'); } catch (e) {}
+    resize();
+    if (state === 'ready') setAttract('start');
+  }
+
+  // Arcade attract mode: title card, then a self-playing demo, then the high scores, on a loop.
+  function setAttract(phase) {
+    attract = phase; attractT = 0;
+    $('attract').hidden = phase !== 'demo';
+    if (phase === 'demo') { reset(); show(null); }
+    else if (phase === 'board') showBoard(-1, say('Start building', 'PRESS START'));
+    else { if (ui !== 'start') reset(); show('startScreen'); }
   }
 
   function makeScenery() {
@@ -244,17 +351,20 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
     stars = Array.from({ length: 140 }, (_, i) => ({ x: rnd(i, 7), y: rnd(i, 9), r: 0.4 + rnd(i, 11) * 1.2, z: 0.3 + rnd(i, 13) }));
   }
 
+  // Colors as [r, g, b] arrays so they can be blended.
   function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
-  function mix(a, b, t) { const A = hexToRgb(a), B = hexToRgb(b); return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',')})`; }
+  const lerp3 = (A, B, t) => A.map((v, i) => Math.round(v + (B[i] - v) * t));
+  const rgb = a => `rgb(${a.join(',')})`;
+  const mix = (A, B, t) => rgb(lerp3(A, B, t));
   function skyAt(t) {
     for (let i = 1; i < SKY.length; i++) {
       if (t <= SKY[i][0]) {
         const [t0, a0, b0] = SKY[i - 1], [t1, a1, b1] = SKY[i];
         const k = (t - t0) / (t1 - t0);
-        return [mix(a0, a1, k), mix(b0, b1, k)];
+        return [lerp3(hexToRgb(a0), hexToRgb(a1), k), lerp3(hexToRgb(b0), hexToRgb(b1), k)];
       }
     }
-    return [SKY[SKY.length - 1][1], SKY[SKY.length - 1][2]];
+    return [hexToRgb(SKY[SKY.length - 1][1]), hexToRgb(SKY[SKY.length - 1][2])];
   }
 
   function makeLobby() {
@@ -274,6 +384,8 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
     const w = top.w;
     const x = fromLeft ? -AMP - w / 2 : AMP - w / 2;
     cur = { x, w, a: x + 4, h: (205 + n * 9) % 360, seed: seedN++, lit: 0.35 + rnd(n, 5) * 0.5, glow: 0, dir: fromLeft ? 1 : -1 };
+    // Where the demo player will drop this floor: usually dead-on, sometimes a bit off.
+    cur.demoOff = Math.random() < 0.6 ? 0 : (Math.random() < 0.5 ? -1 : 1) * (10 + Math.random() * 18);
   }
 
   function speed() { return Math.min(115 + (stack.length - 1) * 5.5, 340); }
@@ -295,7 +407,12 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   const SCALE = [0, 2, 4, 7, 9];
   function perfectSound(c) {
     const i = c - 1, semi = SCALE[i % 5] + 12 * Math.floor(i / 5);
-    tone(392 * Math.pow(2, Math.min(semi, 30) / 12), 0.22, 'triangle', 0.2);
+    const f = 392 * Math.pow(2, Math.min(semi, 30) / 12);
+    if (retro) tone(f, 0.16, 'square', 0.08); else tone(f, 0.22, 'triangle', 0.2);
+  }
+  // Semitone steps from a base note, played one after another like a chiptune.
+  function jingle(base, steps, gap, dur, vol) {
+    steps.forEach((st, k) => setTimeout(() => tone(base * Math.pow(2, st / 12), k === steps.length - 1 ? dur * 2.5 : dur, 'square', vol), k * gap));
   }
   function buzz(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} }
 
@@ -305,7 +422,9 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
     reset();
     state = 'play';
     show(null);
+    attract = 'start'; $('attract').hidden = true;
     $('hud').classList.remove('dim');
+    if (retro) jingle(523, [0, 4, 7, 12, 7, 12], 75, 0.07, 0.07);
     try { navigator.wakeLock && navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}
   }
 
@@ -314,30 +433,31 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
     const ox = Math.max(cur.x, top.x), oe = Math.min(cur.x + cur.w, top.x + top.w), ow = oe - ox;
     if (ow <= 0) return gameOver();
 
+    const live = state === 'play'; // false while the attract-mode demo plays itself
     const diff = cur.x - top.x;
     let placed;
     if (Math.abs(diff) <= TOL) {
       combo++;
       placed = { ...cur, x: top.x, a: cur.a - diff, w: top.w, glow: 1 };
-      let label = combo > 1 ? `PERFECT ×${combo}` : 'PERFECT';
+      let label = combo > 1 ? say(`PERFECT ×${combo}`, `PERFECT x${combo}`) : 'PERFECT';
       if (combo >= 3 && placed.w < BASE_W) {
         const grow = Math.min(BASE_W - placed.w, 10);
         placed.x -= grow / 2; placed.w += grow;
-        label += ' · WIDER';
+        label += say(' · WIDER', '+');
       }
       pops.push({ text: label, x: placed.x + placed.w / 2, y: y + BH, life: 1 });
-      perfectSound(combo); buzz(18);
+      if (live) { perfectSound(combo); buzz(18); }
     } else {
       combo = 0;
       const side = diff < 0 ? -1 : 1;
       const px = side < 0 ? cur.x : oe, pw = side < 0 ? top.x - cur.x : cur.x + cur.w - oe;
       debris.push({ ...cur, x: px, w: pw, y, vx: side * 50, vy: 40, rot: 0, vr: side * (1.5 + Math.random() * 1.5) });
       placed = { ...cur, x: ox, w: ow, glow: 0.35 };
-      tone(170, 0.09, 'square', 0.06, 0.6); buzz(8);
+      if (live) { tone(170, 0.09, 'square', 0.06, 0.6); buzz(8); }
     }
     delete placed.dir;
     stack.push(placed);
-    checkLandmark();
+    if (live) checkLandmark();
     updateHud();
     spawn();
   }
@@ -361,7 +481,9 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
     state = 'over';
     debris.push({ ...cur, y: stack.length * BH, vx: cur.dir * speed() * 0.35, vy: 60, rot: 0, vr: cur.dir * 2.4 });
     cur = null;
-    tone(240, 0.6, 'sawtooth', 0.08, 0.25); buzz([30, 40, 60]);
+    if (retro) jingle(392, [0, -2, -4, -7, -12], 170, 0.14, 0.08);
+    else tone(240, 0.6, 'sawtooth', 0.08, 0.25);
+    buzz([30, 40, 60]);
     const floors = stack.length - 1, isBest = floors > best;
     if (isBest) { best = floors; try { localStorage.setItem('skyline-best', String(best)); } catch (e) {} }
     $('toast').classList.remove('show');
@@ -394,7 +516,7 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   function showEntry(floors, rank) {
     pending = { floors, rank };
     slot = 0;
-    $('entryRank').textContent = `New high score · ${ordinal(rank + 1)} place`;
+    $('entryRank').textContent = say(`New high score · ${ordinal(rank + 1)} place`, `NEW HIGH SCORE! ${ordinal(rank + 1)}`);
     $('entryFloors').innerHTML = `${floors} <small>${floors === 1 ? 'floor' : 'floors'}</small>`;
     renderInitials();
     show('entryScreen');
@@ -434,8 +556,8 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
     try { localStorage.setItem('skyline-initials', name); } catch (e) {}
     const rank = pending.rank;
     pending = null;
-    [0, 4, 7, 12].forEach((s, k) => setTimeout(() => tone(523 * Math.pow(2, s / 12), 0.14, 'square', 0.07), k * 90));
-    showBoard(rank, 'Build again');
+    jingle(523, [0, 4, 7, 12], 90, 0.12, 0.07);
+    showBoard(rank, say('Build again', 'PLAY AGAIN'));
   }
 
   function showBoard(highlight, label) {
@@ -485,12 +607,26 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 
   // ---------- loop ----------
   function update(dt) {
+    if (retro && state === 'ready') {
+      attractT += dt;
+      if (attractT > (attract === 'demo' ? 10 : 6)) setAttract(attract === 'start' ? 'demo' : attract === 'demo' ? 'board' : 'start');
+    }
+    const demo = retro && state === 'ready' && attract === 'demo';
     if (cur) {
+      const top = stack[stack.length - 1], before = cur.x - top.x - cur.demoOff;
       cur.x += cur.dir * speed() * dt;
       const c = cur.x + cur.w / 2;
       if (c > AMP) { cur.x -= (c - AMP); cur.dir = -1; }
       if (c < -AMP) { cur.x += (-AMP - c); cur.dir = 1; }
       cur.a = cur.x + 4;
+      if (demo) {
+        const after = cur.x - top.x - cur.demoOff;
+        if (before * after <= 0) {
+          if (!cur.demoOff) { cur.a -= after; cur.x -= after; } // the demo player never misses a perfect
+          drop();
+          if (stack.length > 16 || stack[stack.length - 1].w < 60) reset();
+        }
+      }
     }
     for (const d of debris) { d.vy -= 1100 * dt; d.x += d.vx * dt; d.y += d.vy * dt; d.rot += d.vr * dt; }
     debris = debris.filter(d => d.y > camY - H / (s * zoom) - 300);
@@ -514,34 +650,37 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   }
 
   function paintBlock(b, y, rot, S, wx, wy) {
-    const w = b.w * S, h = BH * S, cx = wx(b.x + b.w / 2), cy = wy(y + BH / 2);
+    const w = b.w * S, h = BH * S;
+    let cx = wx(b.x + b.w / 2), cy = wy(y + BH / 2);
     if (cy + h < -40 || cy - h > H + 40) return;
+    if (retro && !rot) { cx = snap(cx); cy = snap(cy); }
+    const pal = retro ? (b.lobby ? ['#3c3c7c', '#7c7cfc', '#14143c'] : RPAL[b.seed % RPAL.length]) : null;
     ctx.save();
     ctx.translate(cx, cy);
     if (rot) ctx.rotate(rot);
-    ctx.fillStyle = `hsl(${b.h} 28% ${b.lobby ? 16 : 23}%)`;
-    ctx.fillRect(-w / 2, -h / 2, w, h);
-    ctx.fillStyle = `hsl(${b.h} 34% 40%)`;
-    ctx.fillRect(-w / 2, -h / 2, w, Math.max(1, 1.3 * S));
-    ctx.fillStyle = `hsl(${b.h} 30% 12%)`;
-    ctx.fillRect(-w / 2, h / 2 - Math.max(1, 1.5 * S), w, Math.max(1, 1.5 * S));
+    ctx.fillStyle = pal ? pal[0] : `hsl(${b.h} 28% ${b.lobby ? 16 : 23}%)`;
+    fr(-w / 2, -h / 2, w, h);
+    ctx.fillStyle = pal ? pal[1] : `hsl(${b.h} 34% 40%)`;
+    fr(-w / 2, -h / 2, w, Math.max(1, 1.3 * S));
+    ctx.fillStyle = pal ? pal[2] : `hsl(${b.h} 30% 12%)`;
+    fr(-w / 2, h / 2 - Math.max(1, 1.5 * S), w, Math.max(1, 1.5 * S));
     if (b.lobby) {
-      ctx.fillStyle = 'hsl(40 80% 62%)';
-      ctx.fillRect(-w / 2 + 8 * S, -h / 2 + 6 * S, w - 16 * S, h - 9 * S);
-      ctx.fillStyle = `hsl(${b.h} 28% 16%)`;
-      for (let i = 1; i < 6; i++) ctx.fillRect(-w / 2 + 8 * S + (w - 16 * S) * i / 6 - S, -h / 2 + 6 * S, 2 * S, h - 9 * S);
+      ctx.fillStyle = retro ? '#f8d878' : 'hsl(40 80% 62%)';
+      fr(-w / 2 + 8 * S, -h / 2 + 6 * S, w - 16 * S, h - 9 * S);
+      ctx.fillStyle = pal ? pal[0] : `hsl(${b.h} 28% 16%)`;
+      for (let i = 1; i < 6; i++) fr(-w / 2 + 8 * S + (w - 16 * S) * i / 6 - S, -h / 2 + 6 * S, 2 * S, h - 9 * S);
     } else {
       const wh = BH * 0.44, top = -h / 2 + BH * 0.3 * S, mid = b.x + b.w / 2;
       const k0 = Math.ceil((b.x + 2 - b.a) / WIN_GAP), k1 = Math.floor((b.x + b.w - 2 - WIN_W - b.a) / WIN_GAP);
       for (let k = k0; k <= k1; k++) {
         const on = rnd(b.seed, k) < b.lit;
-        ctx.fillStyle = on ? 'hsl(42 95% 68%)' : `hsl(${b.h} 30% 15%)`;
-        ctx.fillRect((b.a + k * WIN_GAP - mid) * S, top, WIN_W * S, wh * S);
+        ctx.fillStyle = on ? (retro ? '#f8d878' : 'hsl(42 95% 68%)') : (retro ? '#101028' : `hsl(${b.h} 30% 15%)`);
+        fr((b.a + k * WIN_GAP - mid) * S, top, WIN_W * S, wh * S);
       }
     }
     if (b.glow > 0) {
-      ctx.strokeStyle = `rgba(255, 214, 120, ${b.glow})`;
-      ctx.lineWidth = 2 * S;
+      ctx.strokeStyle = retro ? `rgba(255, 255, 255, ${b.glow})` : `rgba(255, 214, 120, ${b.glow})`;
+      ctx.lineWidth = retro ? PX : 2 * S;
       ctx.strokeRect(-w / 2, -h / 2, w, h);
     }
     ctx.restore();
@@ -553,16 +692,26 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
     const alt = clamp(camY / (BH * 110), 0, 1);
 
     const [top, bot] = skyAt(alt);
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, top); g.addColorStop(1, bot);
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    if (retro) {
+      // Solid bands instead of a smooth gradient, like a limited console palette.
+      const N = 9;
+      for (let i = 0; i < N; i++) {
+        ctx.fillStyle = mix(top, bot, i / (N - 1));
+        fr(0, H * i / N, W, H / N + PX);
+      }
+    } else {
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, rgb(top)); g.addColorStop(1, rgb(bot));
+      ctx.fillStyle = g; fr(0, 0, W, H);
+    }
 
     const starA = 0.25 + 0.75 * clamp((alt - 0.1) / 0.5, 0, 1);
     ctx.fillStyle = '#fff';
     for (const st of stars) {
       const y = ((st.y * H * 1.2 + camY * S * 0.04 * st.z) % (H * 1.2)) - H * 0.1;
       ctx.globalAlpha = starA * (0.35 + 0.65 * st.z / 1.3) * (1 - clamp(y / (H * 0.85), 0, 1) * (1 - alt));
-      ctx.fillRect(st.x * W, y, st.r, st.r);
+      if (retro) ctx.globalAlpha = ctx.globalAlpha > 0.35 ? 1 : 0;
+      fr(st.x * W, y, st.r, st.r);
     }
     ctx.globalAlpha = 1;
 
@@ -570,24 +719,24 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
     const farBase = bl + camY * S * 0.6, fs = S * 0.75;
     if (farBase - 220 * fs < H) {
       ctx.fillStyle = '#0a0c26';
-      for (const b of skyline) ctx.fillRect(W / 2 + b.x * fs, farBase - b.h * fs, b.w * fs, b.h * fs + 2);
+      for (const b of skyline) fr(W / 2 + b.x * fs, farBase - b.h * fs, b.w * fs, b.h * fs + 2);
       ctx.fillStyle = 'rgba(255, 201, 92, .55)';
       for (const b of skyline) {
         for (let r = 8; r < b.h - 6; r += 11) for (let c = 5; c < b.w - 5; c += 8) {
-          if (rnd(b.seed + r, c) < 0.16) ctx.fillRect(W / 2 + (b.x + c) * fs, farBase - (b.h - r) * fs, 2.2 * fs, 3 * fs);
+          if (rnd(b.seed + r, c) < 0.16) fr(W / 2 + (b.x + c) * fs, farBase - (b.h - r) * fs, 2.2 * fs, 3 * fs);
         }
       }
       ctx.fillStyle = '#05061a';
-      ctx.fillRect(0, farBase, W, H);
+      fr(0, farBase, W, H);
     }
 
     // street
     const gy = wy(0);
     if (gy < H) {
-      ctx.fillStyle = '#05061a'; ctx.fillRect(0, gy, W, H - gy);
-      ctx.fillStyle = 'rgba(255, 201, 92, .5)'; ctx.fillRect(0, gy, W, Math.max(1, S));
+      ctx.fillStyle = '#05061a'; fr(0, gy, W, H - gy);
+      ctx.fillStyle = 'rgba(255, 201, 92, .5)'; fr(0, gy, W, Math.max(1, S));
       ctx.fillStyle = 'rgba(244, 239, 230, .14)';
-      for (let x = -400; x < 400; x += 36) ctx.fillRect(wx(x), gy + 14 * S, 18 * S, 2 * S);
+      for (let x = -400; x < 400; x += 36) fr(wx(x), gy + 14 * S, 18 * S, 2 * S);
     }
 
     for (let i = 0; i < stack.length; i++) paintBlock(stack[i], i * BH, 0, S, wx, wy);
@@ -597,9 +746,16 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
     ctx.textAlign = 'center';
     for (const p of pops) {
       ctx.globalAlpha = clamp(p.life * 1.4, 0, 1);
-      ctx.fillStyle = '#ffc95c';
-      ctx.font = `900 ${Math.round(20 * S)}px "Big Shoulders Display", Impact, sans-serif`;
-      ctx.fillText(p.text, wx(p.x), wy(p.y) - (1 - p.life) * 40 * S - 6 * S);
+      const tx = wx(p.x), ty = wy(p.y) - (1 - p.life) * 40 * S - 6 * S;
+      if (retro) {
+        ctx.font = `${8 * PX}px "Press Start 2P", monospace`;
+        ctx.fillStyle = '#000'; ctx.fillText(p.text, snap(tx) + PX, snap(ty) + PX);
+        ctx.fillStyle = '#fcfc54'; ctx.fillText(p.text, snap(tx), snap(ty));
+      } else {
+        ctx.fillStyle = '#ffc95c';
+        ctx.font = `900 ${Math.round(20 * S)}px "Big Shoulders Display", Impact, sans-serif`;
+        ctx.fillText(p.text, tx, ty);
+      }
     }
     ctx.globalAlpha = 1;
   }
@@ -614,23 +770,27 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 
   // ---------- input ----------
   window.addEventListener('pointerdown', e => {
+    attractT = 0;
     if (e.target.closest('button')) return;
     audio();
     if (state === 'play') { e.preventDefault(); drop(); }
+    else if (state === 'ready' && attract === 'demo') { e.preventDefault(); start(); }
   });
   window.addEventListener('keydown', e => {
+    attractT = 0;
     if (ui === 'entry') return entryKey(e);
     if (e.code !== 'Space' && e.code !== 'Enter') return;
     if (e.target.closest && e.target.closest('button')) return;
     e.preventDefault();
-    if (state === 'play') drop(); else if (ui === 'start') start();
+    if (state === 'play') drop(); else if (ui === 'start' || (state === 'ready' && attract === 'demo')) start();
   });
+  $('retroBtn').addEventListener('click', () => { audio(); setRetro(!retro); });
   $('startBtn').addEventListener('click', start);
   $('againBtn').addEventListener('click', start);
   $('boardGo').addEventListener('click', start);
   $('entryOk').addEventListener('click', saveEntry);
-  $('startScores').addEventListener('click', () => showBoard(-1, 'Start building'));
-  $('overScores').addEventListener('click', () => showBoard(-1, 'Build again'));
+  $('startScores').addEventListener('click', () => showBoard(-1, say('Start building', 'PRESS START')));
+  $('overScores').addEventListener('click', () => showBoard(-1, say('Build again', 'PLAY AGAIN')));
   $('initials').addEventListener('click', e => {
     const b = e.target.closest('button');
     if (!b) return;
@@ -642,7 +802,7 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   document.addEventListener('dblclick', e => e.preventDefault());
   window.addEventListener('resize', resize);
 
-  resize(); makeScenery(); setMuted(muted); reset();
+  resize(); makeScenery(); setMuted(muted); reset(); setRetro(retro);
   requestAnimationFrame(frame);
 })();
 </script>
