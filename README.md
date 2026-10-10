@@ -8,4 +8,8 @@ Each floor slides in from the side. Tap to drop it. Whatever hangs over the edge
 
 Open `index.html` in any browser, or turn on GitHub Pages (Settings → Pages → Deploy from branch → `main` / root) and open the link on your phone. On a computer, press Space to drop a floor.
 
+## High scores
+
+Make the top 10 and you enter your initials, arcade style. Scores are saved in your phone's browser, so each phone keeps its own board.
+
 Everything is in one file: no build step, no dependencies.
