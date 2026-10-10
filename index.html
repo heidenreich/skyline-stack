@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0b1030">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Skyline Stack</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: full-bleed night-sky canvas with the tower rising from the street; HUD pinned to the safe-area corners; one card for start and topped-out screens. Single dark look by design. */
+:root {
+  --night: #0b1030;
+  --ink: #f4efe6;
+  --ink-dim: rgba(244, 239, 230, .64);
+  --lamp: #ffc95c;
+  --lamp-ink: #1c1405;
+  --glass: rgba(10, 13, 38, .78);
+  --rule: rgba(255, 201, 92, .32);
+  --display: "Big Shoulders Display", "Arial Narrow", Impact, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--night); color: var(--ink); font-family: var(--mono);
+  overflow: hidden; overscroll-behavior: none; touch-action: none;
+  -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+}
+canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+.hud {
+  position: fixed; top: 0; left: 0; right: 0;
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px 0;
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;
+  pointer-events: none; transition: opacity .3s;
+}
+.hud.dim { opacity: 0; }
+.floors { font-family: var(--display); font-weight: 900; font-size: clamp(60px, 17vw, 92px); line-height: .82; font-variant-numeric: tabular-nums; }
+.floors span { display: block; font-family: var(--mono); font-weight: 500; font-size: 11px; letter-spacing: .2em; color: var(--ink-dim); margin-top: 8px; line-height: 1; }
+.hud-right { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+.meters { font-size: 14px; font-weight: 600; letter-spacing: .04em; color: var(--lamp); font-variant-numeric: tabular-nums; }
+.mute {
+  pointer-events: auto; font: 500 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase;
+  color: var(--ink-dim); background: transparent; border: 1px solid var(--rule); border-radius: 999px;
+  padding: 8px 12px; cursor: pointer;
+}
+.mute:focus-visible, .go:focus-visible { outline: 2px solid var(--lamp); outline-offset: 3px; }
+
+.toast {
+  position: fixed; left: 16px; right: 16px; top: calc(env(safe-area-inset-top, 0px) + 128px);
+  text-align: center; pointer-events: none; opacity: 0; transform: translateY(8px);
+  transition: opacity .35s, transform .35s;
+}
+.toast.show { opacity: 1; transform: none; }
+.toast b { display: block; font-family: var(--display); font-weight: 900; font-size: 26px; letter-spacing: .02em; text-transform: uppercase; text-wrap: balance; }
+.toast span { font-size: 12px; color: var(--lamp); letter-spacing: .08em; }
+
+.overlay { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; }
+.overlay.top { align-items: start; padding-top: calc(env(safe-area-inset-top, 0px) + 40px); }
+.card {
+  width: min(100%, 360px); background: var(--glass); border: 1px solid var(--rule); border-radius: 6px;
+  padding: 24px 22px 22px; display: flex; flex-direction: column; gap: 14px;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.eyebrow { font-size: 11px; letter-spacing: .22em; text-transform: uppercase; color: var(--lamp); }
+.card h1, .card h2 { margin: 0; font-family: var(--display); font-weight: 900; text-transform: uppercase; line-height: .86; text-wrap: balance; }
+.card h1 { font-size: clamp(54px, 16vw, 72px); }
+.card h2 { font-size: clamp(60px, 18vw, 84px); font-variant-numeric: tabular-nums; }
+.card h2 small { font-size: .42em; letter-spacing: .02em; }
+.card p { margin: 0; font-size: 13px; line-height: 1.55; color: var(--ink-dim); }
+.card p strong { color: var(--ink); font-weight: 600; }
+.stats { display: flex; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid var(--rule); font-size: 12px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.stats b { color: var(--ink); font-weight: 600; }
+.badge { align-self: flex-start; font-size: 10px; letter-spacing: .18em; text-transform: uppercase; background: var(--lamp); color: var(--lamp-ink); padding: 4px 8px; border-radius: 3px; font-weight: 600; }
+.go {
+  margin-top: 4px; height: 56px; border: 0; border-radius: 4px; cursor: pointer;
+  background: var(--lamp); color: var(--lamp-ink);
+  font: 900 24px/1 var(--display); letter-spacing: .06em; text-transform: uppercase;
+}
+.go:active { transform: translateY(1px); }
+@media (prefers-reduced-motion: reduce) { .toast, .hud { transition: none; } }
+</style>
+</head>
+<body>
+
+<canvas id="c" aria-label="Skyline Stack game"></canvas>
+
+<div class="hud" id="hud">
+  <div class="floors" id="floors">0<span>FLOORS</span></div>
+  <div class="hud-right">
+    <div class="meters" id="meters">0.0 m</div>
+    <button class="mute" id="mute" type="button" aria-pressed="false">Sound on</button>
+  </div>
+</div>
+
+<div class="toast" id="toast" aria-live="polite"><b id="toastTitle"></b><span id="toastSub"></span></div>
+
+<div class="overlay" id="startScreen">
+  <div class="card">
+    <div class="eyebrow">Tap to build</div>
+    <h1>Skyline Stack</h1>
+    <p>Each floor slides in from the side. <strong>Tap to drop it.</strong> Whatever hangs over the edge gets cut off. Land it dead-on three times in a row and your tower gets wider again.</p>
+    <div class="stats"><span>Your best</span><b id="startBest">No tower yet</b></div>
+    <button class="go" id="startBtn" type="button">Start building</button>
+  </div>
+</div>
+
+<div class="overlay top" id="overScreen" hidden>
+  <div class="card">
+    <div class="eyebrow">Topped out</div>
+    <span class="badge" id="newBest" hidden>New record</span>
+    <h2 id="overFloors">0 <small>floors</small></h2>
+    <p id="overLine"></p>
+    <div class="stats"><span>Best</span><b id="overBest">0 floors</b></div>
+    <button class="go" id="againBtn" type="button">Build again</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const cv = document.getElementById('c');
+  const ctx = cv.getContext('2d');
+  const $ = id => document.getElementById(id);
+
+  // World units: the tower lives in a 380-wide world, scaled to the screen.
+  const BH = 26, BASE_W = 200, AMP = 175, TOL = 5, FLOOR_M = 3.5, WIN_GAP = 9, WIN_W = 5;
+  const LANDMARKS = [
+    [38, 'Christ the Redeemer'], [56, 'the Leaning Tower of Pisa'], [93, 'the Statue of Liberty'],
+    [139, 'the Great Pyramid of Giza'], [169, 'the Washington Monument'], [330, 'the Eiffel Tower'],
+    [443, 'the Empire State Building'], [828, 'the Burj Khalifa']
+  ];
+  const SKY = [ // [t, top, bottom]
+    [0, '#1d1650', '#e9825a'], [0.35, '#0e1238', '#5a3474'], [0.7, '#060a24', '#1b1a4d'], [1, '#010208', '#0a0e2c']
+  ];
+
+  let W, H, dpr, s;
+  let state = 'ready', stack = [], cur = null, debris = [], pops = [];
+  let camY = 0, zoom = 1, base = 0.78, combo = 0, nextMark = 0, seedN = 1;
+  let skyline = [], stars = [];
+  let best = 0, muted = false;
+  try { best = +localStorage.getItem('skyline-best') || 0; muted = localStorage.getItem('skyline-muted') === '1'; } catch (e) {}
+
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const rnd = (a, b) => { const x = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return x - Math.floor(x); };
+  const meters = f => (f * FLOOR_M).toFixed(1) + ' m';
+  const floorsText = f => f + (f === 1 ? ' floor' : ' floors');
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 3);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    s = Math.min(W / 380, H / 600);
+  }
+
+  function makeScenery() {
+    skyline = [];
+    let x = -900;
+    while (x < 900) {
+      const w = 24 + rnd(x, 1) * 46, h = 30 + Math.pow(rnd(x, 2), 1.6) * 170;
+      skyline.push({ x, w, h, seed: x });
+      x += w + 2 + rnd(x, 3) * 10;
+    }
+    stars = Array.from({ length: 140 }, (_, i) => ({ x: rnd(i, 7), y: rnd(i, 9), r: 0.4 + rnd(i, 11) * 1.2, z: 0.3 + rnd(i, 13) }));
+  }
+
+  function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
+  function mix(a, b, t) { const A = hexToRgb(a), B = hexToRgb(b); return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',')})`; }
+  function skyAt(t) {
+    for (let i = 1; i < SKY.length; i++) {
+      if (t <= SKY[i][0]) {
+        const [t0, a0, b0] = SKY[i - 1], [t1, a1, b1] = SKY[i];
+        const k = (t - t0) / (t1 - t0);
+        return [mix(a0, a1, k), mix(b0, b1, k)];
+      }
+    }
+    return [SKY[SKY.length - 1][1], SKY[SKY.length - 1][2]];
+  }
+
+  function makeLobby() {
+    return { x: -BASE_W / 2, w: BASE_W, a: -BASE_W / 2 + 4, h: 228, seed: 0, lit: 1, glow: 0, lobby: true };
+  }
+
+  function reset() {
+    stack = [makeLobby()];
+    debris = []; pops = []; combo = 0; nextMark = 0; seedN = 1;
+    spawn();
+    updateHud();
+  }
+
+  function spawn() {
+    const n = stack.length, top = stack[n - 1];
+    const fromLeft = n % 2 === 1;
+    const w = top.w;
+    const x = fromLeft ? -AMP - w / 2 : AMP - w / 2;
+    cur = { x, w, a: x + 4, h: (205 + n * 9) % 360, seed: seedN++, lit: 0.35 + rnd(n, 5) * 0.5, glow: 0, dir: fromLeft ? 1 : -1 };
+  }
+
+  function speed() { return Math.min(115 + (stack.length - 1) * 5.5, 340); }
+
+  // ---------- sound ----------
+  let actx = null;
+  function audio() {
+    if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; } }
+    if (actx.state === 'suspended') actx.resume();
+  }
+  function tone(f, d, type, vol, slide) {
+    if (muted || !actx) return;
+    const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, f * slide), t + d);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + d + 0.02);
+  }
+  const SCALE = [0, 2, 4, 7, 9];
+  function perfectSound(c) {
+    const i = c - 1, semi = SCALE[i % 5] + 12 * Math.floor(i / 5);
+    tone(392 * Math.pow(2, Math.min(semi, 30) / 12), 0.22, 'triangle', 0.2);
+  }
+  function buzz(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} }
+
+  // ---------- game ----------
+  function start() {
+    audio();
+    reset();
+    state = 'play';
+    $('startScreen').hidden = true; $('overScreen').hidden = true;
+    $('hud').classList.remove('dim');
+    try { navigator.wakeLock && navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}
+  }
+
+  function drop() {
+    const n = stack.length, top = stack[n - 1], y = n * BH;
+    const ox = Math.max(cur.x, top.x), oe = Math.min(cur.x + cur.w, top.x + top.w), ow = oe - ox;
+    if (ow <= 0) return gameOver();
+
+    const diff = cur.x - top.x;
+    let placed;
+    if (Math.abs(diff) <= TOL) {
+      combo++;
+      placed = { ...cur, x: top.x, a: cur.a - diff, w: top.w, glow: 1 };
+      let label = combo > 1 ? `PERFECT ×${combo}` : 'PERFECT';
+      if (combo >= 3 && placed.w < BASE_W) {
+        const grow = Math.min(BASE_W - placed.w, 10);
+        placed.x -= grow / 2; placed.w += grow;
+        label += ' · WIDER';
+      }
+      pops.push({ text: label, x: placed.x + placed.w / 2, y: y + BH, life: 1 });
+      perfectSound(combo); buzz(18);
+    } else {
+      combo = 0;
+      const side = diff < 0 ? -1 : 1;
+      const px = side < 0 ? cur.x : oe, pw = side < 0 ? top.x - cur.x : cur.x + cur.w - oe;
+      debris.push({ ...cur, x: px, w: pw, y, vx: side * 50, vy: 40, rot: 0, vr: side * (1.5 + Math.random() * 1.5) });
+      placed = { ...cur, x: ox, w: ow, glow: 0.35 };
+      tone(170, 0.09, 'square', 0.06, 0.6); buzz(8);
+    }
+    delete placed.dir;
+    stack.push(placed);
+    checkLandmark();
+    updateHud();
+    spawn();
+  }
+
+  function checkLandmark() {
+    const m = (stack.length - 1) * FLOOR_M;
+    let passed = null;
+    while (nextMark < LANDMARKS.length && m > LANDMARKS[nextMark][0]) passed = LANDMARKS[nextMark++];
+    if (passed) toast(`Taller than ${passed[1]}`, `${passed[0]} m · you're at ${m.toFixed(1)} m`);
+  }
+
+  let toastTimer;
+  function toast(title, sub) {
+    $('toastTitle').textContent = title; $('toastSub').textContent = sub;
+    $('toast').classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => $('toast').classList.remove('show'), 2400);
+  }
+
+  function gameOver() {
+    state = 'over';
+    debris.push({ ...cur, y: stack.length * BH, vx: cur.dir * speed() * 0.35, vy: 60, rot: 0, vr: cur.dir * 2.4 });
+    cur = null;
+    tone(240, 0.6, 'sawtooth', 0.08, 0.25); buzz([30, 40, 60]);
+    const floors = stack.length - 1, isBest = floors > best;
+    if (isBest) { best = floors; try { localStorage.setItem('skyline-best', String(best)); } catch (e) {} }
+    $('toast').classList.remove('show');
+    setTimeout(() => showOver(floors, isBest), 750);
+  }
+
+  function showOver(floors, isBest) {
+    $('hud').classList.add('dim');
+    $('overFloors').innerHTML = `${floors} <small>${floors === 1 ? 'floor' : 'floors'}</small>`;
+    const m = floors * FLOOR_M;
+    const passed = LANDMARKS.filter(l => m > l[0]).pop();
+    const next = LANDMARKS.find(l => m <= l[0]);
+    let line = `<strong>${m.toFixed(1)} m</strong> tall. `;
+    if (passed) line += `Taller than ${passed[1]}.`;
+    if (next) line += ` ${passed ? 'Next up' : 'Beat'}: ${next[1]} at ${next[0]} m.`;
+    $('overLine').innerHTML = line;
+    $('overBest').textContent = floorsText(best);
+    $('newBest').hidden = !(isBest && floors > 0);
+    $('overScreen').hidden = false;
+    $('againBtn').focus({ preventScroll: true });
+  }
+
+  function updateHud() {
+    const f = stack.length - 1;
+    $('floors').firstChild.nodeValue = f;
+    $('meters').textContent = meters(f);
+    $('startBest').textContent = best ? `${floorsText(best)} · ${meters(best)}` : 'No tower yet';
+  }
+
+  function setMuted(v) {
+    muted = v;
+    $('mute').textContent = muted ? 'Sound off' : 'Sound on';
+    $('mute').setAttribute('aria-pressed', String(muted));
+    try { localStorage.setItem('skyline-muted', muted ? '1' : '0'); } catch (e) {}
+  }
+
+  // ---------- loop ----------
+  function update(dt) {
+    if (cur) {
+      cur.x += cur.dir * speed() * dt;
+      const c = cur.x + cur.w / 2;
+      if (c > AMP) { cur.x -= (c - AMP); cur.dir = -1; }
+      if (c < -AMP) { cur.x += (-AMP - c); cur.dir = 1; }
+      cur.a = cur.x + 4;
+    }
+    for (const d of debris) { d.vy -= 1100 * dt; d.x += d.vx * dt; d.y += d.vy * dt; d.rot += d.vr * dt; }
+    debris = debris.filter(d => d.y > camY - H / (s * zoom) - 300);
+    for (const p of pops) p.life -= dt * 0.9;
+    pops = pops.filter(p => p.life > 0);
+    for (const b of stack) if (b.glow > 0) b.glow = Math.max(0, b.glow - dt * 1.6);
+
+    let zT = 1, baseT = 0.78, camT;
+    if (state === 'over') {
+      const towerH = (stack.length + 1) * BH;
+      const avail = H * 0.9 - Math.min(H * 0.48, 400);
+      zT = clamp(avail / (towerH * s), 0.05, 1);
+      baseT = 0.9; camT = 0;
+    } else {
+      camT = Math.max(0, (stack.length + 1) * BH - (base - 0.38) * H / (s * zoom));
+    }
+    const k = Math.min(1, dt * 4);
+    zoom += (zT - zoom) * Math.min(1, dt * 2.5);
+    base += (baseT - base) * k;
+    camY += (camT - camY) * k;
+  }
+
+  function paintBlock(b, y, rot, S, wx, wy) {
+    const w = b.w * S, h = BH * S, cx = wx(b.x + b.w / 2), cy = wy(y + BH / 2);
+    if (cy + h < -40 || cy - h > H + 40) return;
+    ctx.save();
+    ctx.translate(cx, cy);
+    if (rot) ctx.rotate(rot);
+    ctx.fillStyle = `hsl(${b.h} 28% ${b.lobby ? 16 : 23}%)`;
+    ctx.fillRect(-w / 2, -h / 2, w, h);
+    ctx.fillStyle = `hsl(${b.h} 34% 40%)`;
+    ctx.fillRect(-w / 2, -h / 2, w, Math.max(1, 1.3 * S));
+    ctx.fillStyle = `hsl(${b.h} 30% 12%)`;
+    ctx.fillRect(-w / 2, h / 2 - Math.max(1, 1.5 * S), w, Math.max(1, 1.5 * S));
+    if (b.lobby) {
+      ctx.fillStyle = 'hsl(40 80% 62%)';
+      ctx.fillRect(-w / 2 + 8 * S, -h / 2 + 6 * S, w - 16 * S, h - 9 * S);
+      ctx.fillStyle = `hsl(${b.h} 28% 16%)`;
+      for (let i = 1; i < 6; i++) ctx.fillRect(-w / 2 + 8 * S + (w - 16 * S) * i / 6 - S, -h / 2 + 6 * S, 2 * S, h - 9 * S);
+    } else {
+      const wh = BH * 0.44, top = -h / 2 + BH * 0.3 * S, mid = b.x + b.w / 2;
+      const k0 = Math.ceil((b.x + 2 - b.a) / WIN_GAP), k1 = Math.floor((b.x + b.w - 2 - WIN_W - b.a) / WIN_GAP);
+      for (let k = k0; k <= k1; k++) {
+        const on = rnd(b.seed, k) < b.lit;
+        ctx.fillStyle = on ? 'hsl(42 95% 68%)' : `hsl(${b.h} 30% 15%)`;
+        ctx.fillRect((b.a + k * WIN_GAP - mid) * S, top, WIN_W * S, wh * S);
+      }
+    }
+    if (b.glow > 0) {
+      ctx.strokeStyle = `rgba(255, 214, 120, ${b.glow})`;
+      ctx.lineWidth = 2 * S;
+      ctx.strokeRect(-w / 2, -h / 2, w, h);
+    }
+    ctx.restore();
+  }
+
+  function draw() {
+    const S = s * zoom, bl = H * base;
+    const wx = x => W / 2 + x * S, wy = y => bl - (y - camY) * S;
+    const alt = clamp(camY / (BH * 110), 0, 1);
+
+    const [top, bot] = skyAt(alt);
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, top); g.addColorStop(1, bot);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+    const starA = 0.25 + 0.75 * clamp((alt - 0.1) / 0.5, 0, 1);
+    ctx.fillStyle = '#fff';
+    for (const st of stars) {
+      const y = ((st.y * H * 1.2 + camY * S * 0.04 * st.z) % (H * 1.2)) - H * 0.1;
+      ctx.globalAlpha = starA * (0.35 + 0.65 * st.z / 1.3) * (1 - clamp(y / (H * 0.85), 0, 1) * (1 - alt));
+      ctx.fillRect(st.x * W, y, st.r, st.r);
+    }
+    ctx.globalAlpha = 1;
+
+    // distant city, slower parallax
+    const farBase = bl + camY * S * 0.6, fs = S * 0.75;
+    if (farBase - 220 * fs < H) {
+      ctx.fillStyle = '#0a0c26';
+      for (const b of skyline) ctx.fillRect(W / 2 + b.x * fs, farBase - b.h * fs, b.w * fs, b.h * fs + 2);
+      ctx.fillStyle = 'rgba(255, 201, 92, .55)';
+      for (const b of skyline) {
+        for (let r = 8; r < b.h - 6; r += 11) for (let c = 5; c < b.w - 5; c += 8) {
+          if (rnd(b.seed + r, c) < 0.16) ctx.fillRect(W / 2 + (b.x + c) * fs, farBase - (b.h - r) * fs, 2.2 * fs, 3 * fs);
+        }
+      }
+      ctx.fillStyle = '#05061a';
+      ctx.fillRect(0, farBase, W, H);
+    }
+
+    // street
+    const gy = wy(0);
+    if (gy < H) {
+      ctx.fillStyle = '#05061a'; ctx.fillRect(0, gy, W, H - gy);
+      ctx.fillStyle = 'rgba(255, 201, 92, .5)'; ctx.fillRect(0, gy, W, Math.max(1, S));
+      ctx.fillStyle = 'rgba(244, 239, 230, .14)';
+      for (let x = -400; x < 400; x += 36) ctx.fillRect(wx(x), gy + 14 * S, 18 * S, 2 * S);
+    }
+
+    for (let i = 0; i < stack.length; i++) paintBlock(stack[i], i * BH, 0, S, wx, wy);
+    if (cur) paintBlock(cur, stack.length * BH, 0, S, wx, wy);
+    for (const d of debris) paintBlock(d, d.y, d.rot, S, wx, wy);
+
+    ctx.textAlign = 'center';
+    for (const p of pops) {
+      ctx.globalAlpha = clamp(p.life * 1.4, 0, 1);
+      ctx.fillStyle = '#ffc95c';
+      ctx.font = `900 ${Math.round(20 * S)}px "Big Shoulders Display", Impact, sans-serif`;
+      ctx.fillText(p.text, wx(p.x), wy(p.y) - (1 - p.life) * 40 * S - 6 * S);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    update(dt); draw();
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- input ----------
+  window.addEventListener('pointerdown', e => {
+    if (e.target.closest('button')) return;
+    audio();
+    if (state === 'play') { e.preventDefault(); drop(); }
+  });
+  window.addEventListener('keydown', e => {
+    if (e.code !== 'Space' && e.code !== 'Enter') return;
+    if (e.target.closest && e.target.closest('button')) return;
+    e.preventDefault();
+    if (state === 'play') drop(); else if (state === 'ready') start();
+  });
+  $('startBtn').addEventListener('click', start);
+  $('againBtn').addEventListener('click', start);
+  $('mute').addEventListener('click', () => { audio(); setMuted(!muted); });
+  document.addEventListener('dblclick', e => e.preventDefault());
+  window.addEventListener('resize', resize);
+
+  resize(); makeScenery(); setMuted(muted); reset();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
