@@ -116,9 +116,8 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 @keyframes blink { 50% { opacity: .3; } }
 @media (prefers-reduced-motion: reduce) { .letter.active, .board li.you { animation: none; } }
 @media (prefers-reduced-motion: reduce) { .toast, .hud { transition: none; } }
-.hud-btns { display: flex; gap: 8px; }
 .hud.dim .mute { pointer-events: none; }
-#retroBtn[aria-pressed="true"] { background: var(--lamp); color: var(--lamp-ink); border-color: var(--lamp); }
+.mode-btn { border-style: dashed; }
 
 /* Retro mode: pixel font everywhere, hard-edged boxes, CRT scanlines, attract-mode banner */
 canvas.pixel { image-rendering: pixelated; image-rendering: crisp-edges; }
@@ -130,10 +129,12 @@ canvas.pixel { image-rendering: pixelated; image-rendering: crisp-edges; }
 }
 .attract {
   position: fixed; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 9vh);
-  text-align: center; pointer-events: none; font: 14px/1.8 var(--arcade); color: var(--lamp);
-  text-shadow: 3px 3px 0 #000; animation: blink 1.1s steps(2, start) infinite;
+  text-align: center; pointer-events: none; font: 900 34px/1.1 var(--display); text-transform: uppercase;
+  color: var(--lamp); text-shadow: 0 2px 12px rgba(0, 0, 0, .6); animation: blink 1.4s ease-in-out infinite;
 }
-.attract small { display: block; font-size: 9px; color: var(--neon); }
+.attract small { display: block; margin-top: 6px; font: 500 11px/1.4 var(--mono); letter-spacing: .22em; color: var(--ink-dim); }
+body.retro .attract { font: 14px/1.8 var(--arcade); text-shadow: 3px 3px 0 #000; animation-timing-function: steps(2, start); animation-duration: 1.1s; }
+body.retro .attract small { font: 9px/1.8 var(--arcade); letter-spacing: 0; color: var(--neon); }
 body.retro { --display: var(--arcade); --mono: var(--arcade); --glass: #05051a; --rule: #ffc95c; }
 body.retro .card {
   border-width: 3px; border-radius: 0; gap: 16px; box-shadow: 6px 6px 0 rgba(0, 0, 0, .6);
@@ -168,14 +169,11 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
   <div class="floors" id="floors">0<span data-retro="1UP">FLOORS</span></div>
   <div class="hud-right">
     <div class="meters" id="meters">0.0 m</div>
-    <div class="hud-btns">
-      <button class="mute" id="retroBtn" type="button" aria-pressed="false">Retro</button>
-      <button class="mute" id="mute" type="button" aria-pressed="false">Sound on</button>
-    </div>
+    <button class="mute" id="mute" type="button" aria-pressed="false">Sound on</button>
   </div>
 </div>
 
-<div class="attract" id="attract" hidden>TAP TO PLAY<small>INSERT COIN</small></div>
+<div class="attract" id="attract" hidden><span data-retro="TAP TO PLAY">Tap to play</span><small data-retro="INSERT COIN">Demo</small></div>
 
 <div class="toast" id="toast" aria-live="polite"><b id="toastTitle"></b><span id="toastSub"></span></div>
 
@@ -187,6 +185,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     <div class="stats"><span data-retro="HI">Your best</span><b id="startBest">No tower yet</b></div>
     <button class="go" id="startBtn" type="button" data-retro="PRESS START">Start building</button>
     <button class="ghost" id="startScores" type="button" data-retro="HI-SCORES">High scores</button>
+    <button class="ghost mode-btn" type="button" aria-pressed="false" data-retro="MODERN MODE">Arcade mode</button>
   </div>
 </div>
 
@@ -218,6 +217,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     <div class="stats"><span data-retro="HI">Best</span><b id="overBest">0 floors</b></div>
     <button class="go" id="againBtn" type="button" data-retro="PLAY AGAIN">Build again</button>
     <button class="ghost" id="overScores" type="button" data-retro="HI-SCORES">High scores</button>
+    <button class="ghost mode-btn" type="button" aria-pressed="false" data-retro="MODERN MODE">Arcade mode</button>
   </div>
 </div>
 
@@ -321,7 +321,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     document.body.classList.toggle('retro', v);
     cv.classList.toggle('pixel', v);
     $('crt').hidden = !v;
-    $('retroBtn').setAttribute('aria-pressed', String(v));
+    document.querySelectorAll('.mode-btn').forEach(b => b.setAttribute('aria-pressed', String(v)));
     document.querySelectorAll('[data-retro]').forEach(el => {
       if (el.dataset.modern === undefined) el.dataset.modern = el.innerHTML;
       el.innerHTML = v ? el.dataset.retro : el.dataset.modern;
@@ -331,7 +331,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     if (state === 'ready') setAttract('start');
   }
 
-  // Arcade attract mode: title card, then a self-playing demo, then the high scores, on a loop.
+  // Attract mode: title card, then a self-playing demo, then the high scores, on a loop.
   function setAttract(phase) {
     attract = phase; attractT = 0;
     $('attract').hidden = phase !== 'demo';
@@ -607,11 +607,11 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
 
   // ---------- loop ----------
   function update(dt) {
-    if (retro && state === 'ready') {
+    if (state === 'ready') {
       attractT += dt;
       if (attractT > (attract === 'demo' ? 10 : 6)) setAttract(attract === 'start' ? 'demo' : attract === 'demo' ? 'board' : 'start');
     }
-    const demo = retro && state === 'ready' && attract === 'demo';
+    const demo = state === 'ready' && attract === 'demo';
     if (cur) {
       const top = stack[stack.length - 1], before = cur.x - top.x - cur.demoOff;
       cur.x += cur.dir * speed() * dt;
@@ -784,7 +784,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     e.preventDefault();
     if (state === 'play') drop(); else if (ui === 'start' || (state === 'ready' && attract === 'demo')) start();
   });
-  $('retroBtn').addEventListener('click', () => { audio(); setRetro(!retro); });
+  document.querySelectorAll('.mode-btn').forEach(b => b.addEventListener('click', () => { audio(); setRetro(!retro); }));
   $('startBtn').addEventListener('click', start);
   $('againBtn').addEventListener('click', start);
   $('boardGo').addEventListener('click', start);

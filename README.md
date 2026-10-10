@@ -12,8 +12,10 @@ Open `index.html` in any browser, or turn on GitHub Pages (Settings â†’ Pages â†
 
 Make the top 10 and you enter your initials, arcade style. Scores are saved in your phone's browser, so each phone keeps its own board.
 
-## Retro mode
+## Arcade mode
 
-Tap **Retro** in the top corner for an 8-bit arcade look: pixel graphics, CRT scanlines, chiptune jingles and an attract mode that plays itself until you tap. Your choice is remembered.
+Tap **Arcade mode** on the title or game-over screen for an 8-bit look: pixel graphics, CRT scanlines and chiptune jingles. Tap **Modern mode** to switch back. Your choice is remembered.
+
+Leave the title screen alone for a few seconds and the game plays a demo of itself, then shows the high scores, like an arcade cabinet waiting for a coin.
 
 Everything is in one file: no build step, no dependencies.
