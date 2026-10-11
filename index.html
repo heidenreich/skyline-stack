@@ -125,6 +125,18 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 .board li.you { color: var(--neon); animation: blink .9s steps(2, start) infinite; }
 .board .num { text-align: right; }
 .board .m { text-align: right; opacity: .6; font-size: 9px; }
+.tabs { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+.tabs button {
+  height: 38px; background: transparent; border: 0; color: var(--ink-dim); cursor: pointer;
+  font: 500 11px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase;
+}
+.tabs button + button { border-left: 1px solid var(--rule); }
+.tabs button[aria-selected="true"] { background: var(--lamp); color: var(--lamp-ink); }
+.tabs button:focus-visible { outline: 2px solid var(--lamp); outline-offset: -4px; }
+.board-note { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ink-dim); }
+body.retro .tabs { border-width: 2px; border-radius: 0; }
+body.retro .tabs button { font: 9px/1 var(--arcade); letter-spacing: .04em; }
+body.retro .board-note { font-size: 9px; line-height: 1.8; }
 @keyframes blink { 50% { opacity: .3; } }
 @media (prefers-reduced-motion: reduce) { .letter.active, .board li.you { animation: none; } }
 @media (prefers-reduced-motion: reduce) { .toast, .hud { transition: none; } }
@@ -213,9 +225,14 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
 
 <div class="overlay top" id="boardScreen" hidden>
   <div class="card">
-    <div class="eyebrow" data-retro="BEST BUILDERS">Top 10 on this phone</div>
+    <div class="eyebrow" id="boardEyebrow">Top 10 on this phone</div>
     <h1 class="arcade-title">High Scores</h1>
+    <div class="tabs" id="boardTabs" role="tablist" hidden>
+      <button type="button" role="tab" data-tab="local" aria-selected="true" data-retro="LOCAL">This phone</button>
+      <button type="button" role="tab" data-tab="world" aria-selected="false" data-retro="WORLD">Everyone</button>
+    </div>
     <ol class="board" id="board"></ol>
+    <p class="board-note" id="boardNote" hidden></p>
     <button class="go" id="boardGo" type="button">Build again</button>
   </div>
 </div>
@@ -295,6 +312,59 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
   }
   const ordinal = n => n + (n === 1 ? 'ST' : n === 2 ? 'ND' : n === 3 ? 'RD' : 'TH');
 
+  // ---------- online high scores (Firebase Firestore over its REST API) ----------
+  // Paste apiKey and projectId from the Firebase console. Both are public by design;
+  // the Firestore security rules decide what may be written.
+  const FIREBASE = { apiKey: '', projectId: '' };
+  const ONLINE = !!(FIREBASE.apiKey && FIREBASE.projectId);
+  const FS = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents`;
+  let world = null, worldState = ONLINE ? 'loading' : 'off'; // loading | ok | error | off
+  let boardTab = 'local', boardHi = { local: -1, world: null }, boardLabel = '';
+
+  async function fsPost(path, body) {
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 8000);
+    try {
+      const r = await fetch(`${FS}${path}?key=${encodeURIComponent(FIREBASE.apiKey)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctl.signal
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return await r.json();
+    } finally { clearTimeout(timer); }
+  }
+
+  async function loadWorld() {
+    if (!ONLINE) return;
+    try {
+      // One sort field keeps this query free of custom indexes; ties are ordered here, oldest first.
+      const rows = await fsPost(':runQuery', { structuredQuery: {
+        from: [{ collectionId: 'scores' }],
+        orderBy: [{ field: { fieldPath: 'f' }, direction: 'DESCENDING' }],
+        limit: 30
+      } });
+      world = rows.filter(r => r.document).map(r => {
+        const d = r.document.fields || {};
+        return { id: r.document.name.split('/').pop(), n: d.n && d.n.stringValue, f: d.f ? +d.f.integerValue : 0, t: (d.t && d.t.timestampValue) || '' };
+      }).filter(x => /^[A-Z]{3}$/.test(x.n) && x.f > 0)
+        .sort((a, b) => b.f - a.f || (a.t < b.t ? -1 : 1)).slice(0, 10);
+      worldState = 'ok';
+    } catch (e) { worldState = 'error'; }
+    if (ui === 'board') renderBoard();
+  }
+
+  async function postWorld(n, f) {
+    const doc = await fsPost('/scores', { fields: {
+      n: { stringValue: n }, f: { integerValue: String(f) }, t: { timestampValue: new Date().toISOString() }
+    } });
+    return doc.name.split('/').pop();
+  }
+
+  function worldRank(f) {
+    if (worldState !== 'ok' || f <= 0) return -1;
+    let i = world.findIndex(x => f > x.f);
+    if (i === -1) i = world.length;
+    return i < 10 ? i : -1;
+  }
+
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const rnd = (a, b) => { const x = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return x - Math.floor(x); };
   const meters = f => (f * FLOOR_M).toFixed(1) + ' m';
@@ -348,7 +418,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     attract = phase; attractT = 0;
     $('attract').hidden = phase !== 'demo';
     if (phase === 'demo') { reset(); show(null); }
-    else if (phase === 'board') showBoard(-1, say('Start building', 'PRESS START'));
+    else if (phase === 'board') { boardHi = { local: -1, world: null }; showBoard(say('Start building', 'PRESS START'), worldState === 'ok' && world.length ? 'world' : 'local'); }
     else { if (ui !== 'start') reset(); show('startScreen'); }
   }
 
@@ -500,6 +570,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     if (isBest) { best = floors; try { localStorage.setItem('skyline-best', String(best)); } catch (e) {} }
     $('toast').classList.remove('show');
     setTimeout(() => showOver(floors, isBest), 750);
+    loadWorld();
   }
 
   function show(id) {
@@ -509,8 +580,8 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
 
   function showOver(floors, isBest) {
     $('hud').classList.add('dim');
-    const rank = rankFor(floors);
-    if (rank >= 0) return showEntry(floors, rank);
+    const rank = rankFor(floors), wrank = worldRank(floors);
+    if (rank >= 0 || wrank >= 0) return showEntry(floors, rank, wrank);
     $('overFloors').innerHTML = `${floors} <small>${floors === 1 ? 'floor' : 'floors'}</small>`;
     const m = floors * FLOOR_M;
     const passed = LANDMARKS.filter(l => m > l[0]).pop();
@@ -525,10 +596,13 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     $('againBtn').focus({ preventScroll: true });
   }
 
-  function showEntry(floors, rank) {
-    pending = { floors, rank };
+  function showEntry(floors, rank, wrank) {
+    pending = { floors, rank, wrank };
     slot = 0;
-    $('entryRank').textContent = say(`New high score · ${ordinal(rank + 1)} place`, `NEW HIGH SCORE! ${ordinal(rank + 1)}`);
+    const where = wrank >= 0
+      ? say(`${ordinal(wrank + 1)} for everyone`, `${ordinal(wrank + 1)} WORLD`)
+      : say(`${ordinal(rank + 1)} on this phone`, `${ordinal(rank + 1)}`);
+    $('entryRank').textContent = say(`New high score · ${where}`, `NEW HIGH SCORE! ${where}`);
     $('entryFloors').innerHTML = `${floors} <small>${floors === 1 ? 'floor' : 'floors'}</small>`;
     renderInitials();
     show('entryScreen');
@@ -562,22 +636,52 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
   function saveEntry() {
     if (!pending) return;
     const name = ini.join('');
-    scores.splice(pending.rank, 0, { n: name, f: pending.floors });
-    scores = scores.slice(0, 10);
-    saveScores();
-    try { localStorage.setItem('skyline-initials', name); } catch (e) {}
-    const rank = pending.rank;
+    const { floors, rank, wrank } = pending;
     pending = null;
+    if (rank >= 0) {
+      scores.splice(rank, 0, { n: name, f: floors });
+      scores = scores.slice(0, 10);
+      saveScores();
+    }
+    try { localStorage.setItem('skyline-initials', name); } catch (e) {}
     jingle(523, [0, 4, 7, 12], 90, 0.12, 0.07);
-    showBoard(rank, say('Build again', 'PLAY AGAIN'));
+    boardHi = { local: rank, world: null };
+    showBoard(say('Build again', 'PLAY AGAIN'), wrank >= 0 ? 'world' : 'local');
+    if (wrank >= 0) {
+      worldState = 'saving'; renderBoard();
+      postWorld(name, floors)
+        .then(id => { boardHi.world = id; return loadWorld(); })
+        .catch(() => { worldState = 'error'; renderBoard(); });
+    }
   }
 
-  function showBoard(highlight, label) {
+  function showBoard(label, tab) {
+    boardLabel = label;
+    boardTab = ONLINE ? (tab || boardTab) : 'local';
+    show('boardScreen');
+    renderBoard();
+    $('boardGo').focus({ preventScroll: true });
+  }
+
+  function renderBoard() {
+    const isWorld = boardTab === 'world';
+    $('boardTabs').hidden = !ONLINE;
+    $('boardTabs').querySelectorAll('button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === boardTab)));
+    $('boardEyebrow').textContent = isWorld ? say('Top 10 everywhere', 'WORLD RECORDS') : say('Top 10 on this phone', 'BEST BUILDERS');
+    let rows = scores, note = '';
+    if (isWorld) {
+      rows = worldState === 'ok' ? world : [];
+      if (worldState === 'loading' || worldState === 'saving') note = say(worldState === 'saving' ? 'Saving your score…' : 'Loading scores…', worldState === 'saving' ? 'SAVING…' : 'LOADING…');
+      else if (worldState === 'error') note = say("Can't reach the online board right now. Scores on this phone are still saved.", 'OFFLINE. LOCAL SCORES ARE SAFE.');
+      else if (!rows.length) note = say('No scores yet. Be the first on the board.', 'NO SCORES YET. BE THE FIRST!');
+    }
+    $('boardNote').textContent = note;
+    $('boardNote').hidden = !note;
     const list = $('board');
     list.textContent = '';
-    scores.forEach((s, i) => {
+    rows.forEach((s, i) => {
       const li = document.createElement('li');
-      if (i === highlight) li.className = 'you';
+      if (isWorld ? (boardHi.world && s.id === boardHi.world) : i === boardHi.local) li.className = 'you';
       for (const [cls, text] of [['', ordinal(i + 1)], ['', s.n], ['num', s.f], ['m', meters(s.f)]]) {
         const span = document.createElement('span');
         if (cls) span.className = cls;
@@ -586,9 +690,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
       }
       list.appendChild(li);
     });
-    $('boardGo').textContent = label;
-    show('boardScreen');
-    $('boardGo').focus({ preventScroll: true });
+    $('boardGo').textContent = boardLabel;
   }
 
   function entryKey(e) {
@@ -801,8 +903,15 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
   $('againBtn').addEventListener('click', start);
   $('boardGo').addEventListener('click', start);
   $('entryOk').addEventListener('click', saveEntry);
-  $('startScores').addEventListener('click', () => showBoard(-1, say('Start building', 'PRESS START')));
-  $('overScores').addEventListener('click', () => showBoard(-1, say('Build again', 'PLAY AGAIN')));
+  $('startScores').addEventListener('click', () => { boardHi = { local: -1, world: null }; showBoard(say('Start building', 'PRESS START')); });
+  $('overScores').addEventListener('click', () => { boardHi = { local: -1, world: null }; showBoard(say('Build again', 'PLAY AGAIN')); });
+  $('boardTabs').addEventListener('click', e => {
+    const b = e.target.closest('button[data-tab]');
+    if (!b) return;
+    boardTab = b.dataset.tab;
+    if (boardTab === 'world' && worldState !== 'saving') { if (worldState !== 'ok') worldState = 'loading'; loadWorld(); }
+    renderBoard();
+  });
   $('initials').addEventListener('click', e => {
     const b = e.target.closest('button');
     if (!b) return;
@@ -815,6 +924,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
   window.addEventListener('resize', resize);
 
   resize(); makeScenery(); setMuted(muted); reset(); setRetro(retro);
+  loadWorld();
   requestAnimationFrame(frame);
 })();
 </script>
