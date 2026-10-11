@@ -741,11 +741,31 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
   }
 
   function reset() {
-    ripples = []; shakeT = 0;
+    ripples = []; shakeT = 0; lastKind = 'slide';
     stack = [makeLobby()];
     debris = []; pops = []; combo = 0; nextMark = 0; seedN = 1;
     spawn();
     updateHud();
+  }
+
+  // Special floors mix in as the tower grows: none for the first 5, more often higher up.
+  const KINDS = {
+    slow: { speed: 0.6, label: ['Slow floor', 'SLOW'] },
+    fast: { speed: 1.45, label: ['Express', 'EXPRESS'] },
+    zigzag: { speed: 1.1, label: ['Zigzag', 'ZIGZAG'] },
+    crane: { speed: 0.85, label: ['Crane drop · tap to release', 'CRANE'] }
+  };
+  const HOVER = BH * 2.2;
+  let lastKind = 'slide';
+  function pickKind(floors) {
+    if (floors < 5) return 'slide';
+    const table = floors < 10 ? [['slide', 70], ['slow', 15], ['fast', 15]]
+      : floors < 20 ? [['slide', 50], ['slow', 10], ['fast', 15], ['crane', 15], ['zigzag', 10]]
+      : [['slide', 40], ['slow', 5], ['fast', 20], ['crane', 20], ['zigzag', 15]];
+    let r = Math.random() * 100, kind = 'slide';
+    for (const [k, w] of table) { if ((r -= w) < 0) { kind = k; break; } }
+    if (kind !== 'slide' && kind === lastKind) kind = 'slide'; // never the same special twice in a row
+    return kind;
   }
 
   function spawn() {
@@ -753,12 +773,22 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     const fromLeft = n % 2 === 1;
     const w = top.w;
     const x = fromLeft ? -AMP - w / 2 : AMP - w / 2;
-    cur = { x, w, a: x + 4, h: (205 + n * 9) % 360, seed: seedN++, lit: 0.35 + rnd(n, 5) * 0.5, glow: 0, dir: fromLeft ? 1 : -1 };
+    const kind = pickKind(n - 1);
+    lastKind = kind;
+    cur = { x, w, a: x + 4, h: (205 + n * 9) % 360, seed: seedN++, lit: 0.35 + rnd(n, 5) * 0.5, glow: 0, dir: fromLeft ? 1 : -1, kind, fy: 0, rot: 0 };
+    if (kind === 'crane') {
+      cur.phase = fromLeft ? -Math.PI / 2 : Math.PI / 2;
+      cur.fy = HOVER;
+      cur.x = Math.sin(cur.phase) * AMP * 0.8 - w / 2;
+    }
+    if (kind === 'zigzag') cur.turnT = 0.35 + Math.random() * 0.7;
+    if (KINDS[kind]) pops.push({ text: say(KINDS[kind].label[0], KINDS[kind].label[1]), x: 0, y: n * BH + (kind === 'crane' ? HOVER + BH * 2 : BH * 2.4), life: 1.3 });
     // Where the demo player will drop this floor: usually dead-on, sometimes a bit off.
     cur.demoOff = Math.random() < 0.6 ? 0 : (Math.random() < 0.5 ? -1 : 1) * (10 + Math.random() * 18);
   }
 
   function speed() { return Math.min(115 + (stack.length - 1) * 5.5, 340); }
+  const kindSpeed = () => cur && KINDS[cur.kind] ? KINDS[cur.kind].speed : 1;
 
   // ---------- sound ----------
   let actx = null;
@@ -806,6 +836,15 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
   }
 
   function drop() {
+    if (!cur) return;
+    if (cur.kind === 'crane') {
+      if (!cur.falling) { cur.falling = true; cur.vy = 140; if (state === 'play') tone(880, 0.05, 'square', 0.04, 0.5); }
+      return;
+    }
+    land();
+  }
+
+  function land() {
     const n = stack.length, top = stack[n - 1], y = n * BH;
     const ox = Math.max(cur.x, top.x), oe = Math.min(cur.x + cur.w, top.x + top.w), ow = oe - ox;
     if (ow <= 0) return gameOver();
@@ -860,7 +899,8 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
 
   function gameOver() {
     state = 'over';
-    debris.push({ ...cur, y: stack.length * BH, vx: cur.dir * speed() * 0.35, vy: 60, rot: 0, vr: cur.dir * 2.4 });
+    const swing = cur.kind === 'crane' ? 0 : cur.dir;
+    debris.push({ ...cur, y: stack.length * BH, vx: swing * speed() * 0.35, vy: 60, rot: 0, vr: (swing || 1) * 2.4 });
     cur = null;
     if (retro) jingle(392, [0, -2, -4, -7, -12], 170, 0.14, 0.08);
     else tone(240, 0.6, 'sawtooth', 0.08, 0.25);
@@ -1045,16 +1085,33 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     }
     const demo = state === 'ready' && attract === 'demo';
     if (cur) {
-      const top = stack[stack.length - 1], before = cur.x - top.x - cur.demoOff;
-      cur.x += cur.dir * speed() * dt;
-      const c = cur.x + cur.w / 2;
-      if (c > AMP) { cur.x -= (c - AMP); cur.dir = -1; }
-      if (c < -AMP) { cur.x += (-AMP - c); cur.dir = 1; }
-      cur.a = cur.x + 4;
-      if (demo) {
+      const top = stack[stack.length - 1], before = cur.x - top.x - cur.demoOff, watched = cur;
+      if (cur.kind === 'crane') {
+        if (cur.falling) {
+          cur.vy += 1600 * dt;
+          cur.fy -= cur.vy * dt;
+          cur.rot *= Math.max(0, 1 - dt * 14);
+          if (cur.fy <= 0) { cur.fy = 0; cur.rot = 0; land(); }
+        } else {
+          // swing like a load on a crane cable
+          const R = AMP * 0.8;
+          cur.phase += speed() * kindSpeed() / R * dt;
+          cur.x = Math.sin(cur.phase) * R - cur.w / 2;
+          cur.rot = -Math.cos(cur.phase) * 0.07;
+          cur.fy = HOVER + Math.sin(cur.phase * 2) * 2;
+        }
+      } else {
+        cur.x += cur.dir * speed() * kindSpeed() * dt;
+        if (cur.kind === 'zigzag' && (cur.turnT -= dt) <= 0) { cur.dir *= -1; cur.turnT = 0.35 + Math.random() * 0.7; }
+        const c = cur.x + cur.w / 2;
+        if (c > AMP) { cur.x -= (c - AMP); cur.dir = -1; }
+        if (c < -AMP) { cur.x += (-AMP - c); cur.dir = 1; }
+      }
+      if (cur && !cur.falling) cur.a = cur.x + 4;
+      if (demo && cur === watched && !cur.falling) {
         const after = cur.x - top.x - cur.demoOff;
         if (before * after <= 0) {
-          if (!cur.demoOff) { cur.a -= after; cur.x -= after; } // the demo player never misses a perfect
+          if (!cur.demoOff) { cur.a -= after; cur.x -= after; cur.rot = 0; } // the demo player never misses a perfect
           drop();
           if (stack.length > 16 || stack[stack.length - 1].w < 60) reset();
         }
@@ -1217,7 +1274,27 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
       ctx.translate(snap(Math.sin(t * 70) * shakeAmp * 0.35 * k), snap(Math.abs(Math.sin(t * 45)) * shakeAmp * k));
     }
     for (let i = 0; i < stack.length; i++) paintBlock(stack[i], i * BH, 0, S, wx, wy);
-    if (cur) paintBlock(cur, stack.length * BH, 0, S, wx, wy);
+    if (cur) {
+      const cy = stack.length * BH + cur.fy;
+      if (cur.kind === 'crane' && !cur.falling) {
+        const hx = wx(cur.x + cur.w / 2), hy = wy(cy + BH) - 4 * S;
+        ctx.fillStyle = retro ? '#d8d8d8' : 'rgba(244, 239, 230, .55)';
+        fr(hx - Math.max(1, 0.75 * S), -10, Math.max(PX, 1.5 * S), hy + 10);
+        ctx.fillStyle = retro ? '#fcfc54' : P.glow;
+        fr(hx - 5 * S, hy - 2 * S, 10 * S, 6 * S);
+      }
+      if (cur.kind === 'fast') {
+        ctx.fillStyle = retro ? '#ffffff' : P.glow;
+        ctx.globalAlpha = 0.5;
+        const tail = cur.dir > 0 ? cur.x : cur.x + cur.w;
+        for (let i = 0; i < 3; i++) {
+          const len = (14 + i * 6) * S, yy = wy(cy + BH * (0.25 + i * 0.25));
+          fr(cur.dir > 0 ? wx(tail) - len - 4 * S : wx(tail) + 4 * S, yy, len, Math.max(PX, 1.5 * S));
+        }
+        ctx.globalAlpha = 1;
+      }
+      paintBlock(cur, cy, cur.rot || 0, S, wx, wy);
+    }
     for (const d of debris) paintBlock(d, d.y, d.rot, S, wx, wy);
     for (const r of ripples) {
       const grow = (1 - Math.min(1, r.life)) * 26 * S;

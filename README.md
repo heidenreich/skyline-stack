@@ -8,6 +8,17 @@ Each floor slides in from the side. Tap to drop it. Whatever hangs over the edge
 
 Open `index.html` in any browser, or turn on GitHub Pages (Settings → Pages → Deploy from branch → `main` / root) and open the link on your phone. On a computer, press Space to drop a floor.
 
+## Special floors
+
+After the 5th floor, some floors behave differently, and a label tells you which one is coming:
+
+- **Slow floor**: drifts at about half speed.
+- **Express**: almost one and a half times as fast.
+- **Zigzag** (from the 10th floor): changes direction at random.
+- **Crane drop** (from the 10th floor): swings on a cable; tap to release it and it falls onto the tower.
+
+They get more common the higher you build, and the same special floor never comes twice in a row.
+
 ## Share your tower
 
 After a game, tap **Share your tower** to send a picture of your finished building, with its height and the landmark it beat, in your current look.
