@@ -58,6 +58,19 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 .hud.dim { opacity: 0; }
 .floors { font-family: var(--display); font-weight: 900; font-size: clamp(60px, 17vw, 92px); line-height: .82; font-variant-numeric: tabular-nums; }
 .floors span { display: block; font-family: var(--mono); font-weight: 500; font-size: 11px; letter-spacing: .2em; color: var(--ink-dim); margin-top: 8px; line-height: 1; }
+.hud-left { display: flex; flex-direction: column; gap: 12px; }
+.streak { display: flex; align-items: center; gap: 5px; opacity: .55; transition: opacity .2s; }
+.streak.on { opacity: 1; }
+.streak i { width: 16px; height: 6px; border-radius: 3px; border: 1px solid var(--rule); transition: background .15s, transform .15s; }
+.streak i.full { background: var(--lamp); border-color: var(--lamp); transform: scaleY(1.4); }
+.streak.wide i.full { background: var(--neon); border-color: var(--neon); box-shadow: 0 0 8px var(--neon); }
+.streak b { margin-left: 6px; font: 500 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-dim); }
+.streak.wide b { color: var(--neon); }
+.streak.broke { animation: broke .3s; }
+@keyframes broke { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+body.retro .streak i { border-radius: 0; height: 8px; }
+body.retro .streak b { font: 8px/1 var(--arcade); letter-spacing: 0; }
+@media (prefers-reduced-motion: reduce) { .streak.broke { animation: none; } }
 .hud-right { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
 .meters { font-size: 14px; font-weight: 600; letter-spacing: .04em; color: var(--lamp); font-variant-numeric: tabular-nums; }
 .mute {
@@ -154,6 +167,9 @@ body.retro .install-hint b { font-weight: 400; }
 body.retro .look-label { font-size: 9px; letter-spacing: .06em; color: var(--neon); }
 body.retro .chip { font: 9px/1.2 var(--arcade); text-transform: uppercase; border-radius: 0; }
 body.retro .swatch { border-radius: 0; }
+.share-card img { display: block; width: 100%; max-width: 100%; max-height: 52vh; object-fit: contain; border-radius: 6px; -webkit-touch-callout: default; user-select: auto; -webkit-user-select: auto; }
+.share-save { display: grid; place-items: center; text-decoration: none; }
+body.retro .share-card img { border-radius: 0; }
 .tabs { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
 .tabs button {
   height: 38px; background: transparent; border: 0; color: var(--ink-dim); cursor: pointer;
@@ -219,7 +235,10 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
 <canvas id="c" aria-label="Skyline Stack game"></canvas>
 
 <div class="hud" id="hud">
-  <div class="floors" id="floors">0<span data-retro="1UP">FLOORS</span></div>
+  <div class="hud-left">
+    <div class="floors" id="floors">0<span data-retro="1UP">FLOORS</span></div>
+    <div class="streak" id="streak" aria-hidden="true"><i></i><i></i><i></i><b id="streakLabel">Perfect streak</b></div>
+  </div>
   <div class="hud-right">
     <div class="meters" id="meters">0.0 m</div>
     <button class="mute" id="mute" type="button">Sound: on</button>
@@ -283,6 +302,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     <ol class="board" id="board"></ol>
     <p class="board-note" id="boardNote" hidden></p>
     <button class="go" id="boardGo" type="button">Build again</button>
+    <button class="ghost share-btn" type="button" hidden data-retro="SHARE TOWER">Share your tower</button>
   </div>
 </div>
 
@@ -294,8 +314,19 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     <p id="overLine"></p>
     <div class="stats"><span data-retro="HI">Best</span><b id="overBest">0 floors</b></div>
     <button class="go" id="againBtn" type="button" data-retro="PLAY AGAIN">Build again</button>
+    <button class="ghost share-btn" type="button" hidden data-retro="SHARE TOWER">Share your tower</button>
     <button class="ghost" id="overScores" type="button" data-retro="HI-SCORES">High scores</button>
     <button class="ghost mode-btn" type="button" aria-pressed="false" data-retro="MODERN MODE">Arcade mode</button>
+  </div>
+</div>
+
+<div class="overlay" id="shareScreen" hidden>
+  <div class="card share-card">
+    <div class="eyebrow" data-retro="YOUR TOWER">Your tower</div>
+    <img id="shareImg" alt="Picture of your tower with its height">
+    <p data-retro="PRESS AND HOLD THE PICTURE TO SAVE OR SHARE IT.">Press and hold the picture to save or share it.</p>
+    <a class="go share-save" id="shareSave" download="skyline-stack.png" data-retro="SAVE PICTURE">Save picture</a>
+    <button class="ghost" id="shareClose" type="button" data-retro="BACK">Back</button>
   </div>
 </div>
 
@@ -304,7 +335,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
 <script>
 (() => {
   const cv = document.getElementById('c');
-  const ctx = cv.getContext('2d');
+  let ctx = cv.getContext('2d');
   const $ = id => document.getElementById(id);
 
   // World units: the tower lives in a 380-wide world, scaled to the screen.
@@ -510,6 +541,9 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
   let W, H, dpr, s;
   let state = 'ready', stack = [], cur = null, debris = [], pops = [];
   let camY = 0, zoom = 1, base = 0.78, combo = 0, nextMark = 0, seedN = 1;
+  let ripples = [], shakeT = 0, shakeAmp = 0;
+  let lastRun = null; // the finished tower, kept for sharing until the next game starts
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   let skyline = [], stars = [];
   let best = 0, muted = false, retro = false, PX = 1;
   let attract = 'start', attractT = 0;
@@ -707,6 +741,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
   }
 
   function reset() {
+    ripples = []; shakeT = 0;
     stack = [makeLobby()];
     debris = []; pops = []; combo = 0; nextMark = 0; seedN = 1;
     spawn();
@@ -760,6 +795,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
   // ---------- game ----------
   function start() {
     audio();
+    lastRun = null;
     reset();
     state = 'play';
     show(null);
@@ -787,6 +823,9 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
         label += say(' · WIDER', '+');
       }
       pops.push({ text: label, x: placed.x + placed.w / 2, y: y + BH, life: 1 });
+      ripples.push({ x: placed.x, w: placed.w, y, life: 1 });
+      if (combo >= 3) ripples.push({ x: placed.x, w: placed.w, y, life: 1.35 });
+      if (!reduceMotion) { shakeAmp = Math.min(2 + combo * 0.9, 8); shakeT = 0.2; }
       if (live) { perfectSound(combo); buzz(18); }
     } else {
       combo = 0;
@@ -795,6 +834,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
       debris.push({ ...cur, x: px, w: pw, y, vx: side * 50, vy: 40, rot: 0, vr: side * (1.5 + Math.random() * 1.5) });
       placed = { ...cur, x: ox, w: ow, glow: 0.35 };
       if (live) { tone(170, 0.09, 'square', 0.06, 0.6); buzz(8); }
+      if (live) breakStreak();
     }
     delete placed.dir;
     stack.push(placed);
@@ -828,12 +868,15 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     const floors = stack.length - 1, isBest = floors > best;
     if (isBest) { best = floors; try { localStorage.setItem('skyline-best', String(best)); } catch (e) {} }
     $('toast').classList.remove('show');
+    lastRun = { floors, stack: stack.map(b => ({ ...b, glow: 0 })), name: null };
+    prepareShare();
     setTimeout(() => showOver(floors, isBest), 750);
     loadWorld();
   }
 
   function show(id) {
-    for (const s of ['startScreen', 'overScreen', 'entryScreen', 'boardScreen', 'lookScreen']) $(s).hidden = s !== id;
+    for (const s of ['startScreen', 'overScreen', 'entryScreen', 'boardScreen', 'lookScreen', 'shareScreen']) $(s).hidden = s !== id;
+    document.querySelectorAll('.share-btn').forEach(b => b.hidden = !lastRun);
     ui = id ? id.replace('Screen', '') : null;
   }
 
@@ -903,6 +946,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
       saveScores();
     }
     try { localStorage.setItem('skyline-initials', name); } catch (e) {}
+    if (lastRun) { lastRun.name = name; prepareShare(); }
     jingle(523, [0, 4, 7, 12], 90, 0.12, 0.07);
     boardHi = { local: rank, world: null };
     showBoard(say('Build again', 'PLAY AGAIN'), wrank >= 0 ? 'world' : 'local');
@@ -964,7 +1008,21 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     e.preventDefault();
   }
 
+  // Three pips toward the third perfect in a row, which widens the tower (and keeps widening after).
+  function updateStreak() {
+    const el = $('streak'), n = Math.min(combo, 3), wide = combo >= 3;
+    el.querySelectorAll('i').forEach((pip, i) => pip.classList.toggle('full', i < n));
+    el.classList.toggle('on', combo > 0);
+    el.classList.toggle('wide', wide);
+    $('streakLabel').textContent = wide ? say(`Widening ×${combo}`, `WIDER x${combo}`) : say('Perfect streak', 'PERFECT');
+  }
+  function breakStreak() {
+    const el = $('streak');
+    el.classList.remove('broke'); void el.offsetWidth; el.classList.add('broke');
+  }
+
   function updateHud() {
+    updateStreak();
     const f = stack.length - 1;
     $('floors').firstChild.nodeValue = f;
     $('meters').textContent = meters(f);
@@ -1005,6 +1063,9 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     for (const d of debris) { d.vy -= 1100 * dt; d.x += d.vx * dt; d.y += d.vy * dt; d.rot += d.vr * dt; }
     debris = debris.filter(d => d.y > camY - H / (s * zoom) - 300);
     for (const p of pops) p.life -= dt * 0.9;
+    for (const r of ripples) r.life -= dt * 2.2;
+    ripples = ripples.filter(r => r.life > 0);
+    shakeT = Math.max(0, shakeT - dt);
     pops = pops.filter(p => p.life > 0);
     for (const b of stack) if (b.glow > 0) b.glow = Math.max(0, b.glow - dt * 1.6);
 
@@ -1149,9 +1210,24 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
       for (let x = -400; x < 400; x += 36) fr(wx(x), gy + 14 * S, 18 * S, 2 * S);
     }
 
+    // A perfect drop jolts the tower down and back, stronger with a longer streak.
+    ctx.save();
+    if (shakeT > 0) {
+      const k = shakeT / 0.2, t = performance.now() / 1000;
+      ctx.translate(snap(Math.sin(t * 70) * shakeAmp * 0.35 * k), snap(Math.abs(Math.sin(t * 45)) * shakeAmp * k));
+    }
     for (let i = 0; i < stack.length; i++) paintBlock(stack[i], i * BH, 0, S, wx, wy);
     if (cur) paintBlock(cur, stack.length * BH, 0, S, wx, wy);
     for (const d of debris) paintBlock(d, d.y, d.rot, S, wx, wy);
+    for (const r of ripples) {
+      const grow = (1 - Math.min(1, r.life)) * 26 * S;
+      ctx.globalAlpha = clamp(r.life, 0, 1);
+      ctx.strokeStyle = retro ? '#ffffff' : P.glow;
+      ctx.lineWidth = retro ? PX : 2.5 * S;
+      ctx.strokeRect(snap(wx(r.x) - grow), snap(wy(r.y + BH) - grow * 0.5), snap(r.w * S + grow * 2), snap(BH * S + grow));
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
 
     ctx.textAlign = 'center';
     for (const p of pops) {
@@ -1221,6 +1297,95 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
 
   resize(); makeScenery(); setMuted(muted); reset(); setRetro(retro);
   loadWorld();
+
+  // ---------- share your tower ----------
+  // Draws the finished tower with the game's own renderer onto a 1080×1350 picture,
+  // by pointing the drawing state at an offscreen canvas for one frame.
+  function renderShare(run) {
+    const c = document.createElement('canvas');
+    c.width = 1080; c.height = 1350;
+    const saved = { ctx, W, H, s, zoom, base, camY, stack, cur, debris, pops, ripples, PX, shakeT };
+    try {
+      ctx = c.getContext('2d');
+      W = c.width; H = c.height; s = Math.min(W / 380, H / 600);
+      PX = retro ? 6 : 1;
+      stack = run.stack; cur = null; debris = []; pops = []; ripples = []; shakeT = 0;
+      camY = 0; base = 0.9;
+      zoom = Math.min(1, (H * 0.9 - H * 0.42) / ((stack.length + 0.5) * BH * s));
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.imageSmoothingEnabled = !retro;
+      draw();
+
+      // words on a dark band at the top
+      const band = ctx.createLinearGradient(0, 0, 0, H * 0.46);
+      band.addColorStop(0, 'rgba(5,6,26,.88)'); band.addColorStop(.75, 'rgba(5,6,26,.55)'); band.addColorStop(1, 'rgba(5,6,26,0)');
+      ctx.fillStyle = band; ctx.fillRect(0, 0, W, H * 0.46);
+      const m = run.floors * FLOOR_M;
+      const passed = LANDMARKS.filter(l => m > l[0]).pop();
+      const display = retro ? '"Press Start 2P", monospace' : '"Big Shoulders Display", Impact, sans-serif';
+      const mono = retro ? '"Press Start 2P", monospace' : '"IBM Plex Mono", ui-monospace, monospace';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = '#ffc95c';
+      ctx.font = `${retro ? 400 : 600} ${retro ? 26 : 32}px ${mono}`;
+      ctx.fillText(say('SKYLINE STACK' + (run.name ? ` · ${run.name}` : ''), 'SKYLINE STACK' + (run.name ? ` ${run.name}` : '')), 80, 130);
+      ctx.fillStyle = '#f4efe6';
+      ctx.font = retro ? `400 92px ${display}` : `900 220px ${display}`;
+      ctx.fillText(String(run.floors), 72, retro ? 270 : 330);
+      const numW = ctx.measureText(String(run.floors)).width;
+      ctx.font = retro ? `400 36px ${display}` : `900 84px ${display}`;
+      ctx.fillText(run.floors === 1 ? 'FLOOR' : 'FLOORS', 72 + numW + (retro ? 30 : 24), retro ? 270 : 330);
+      ctx.font = `${retro ? 400 : 500} ${retro ? 24 : 38}px ${mono}`;
+      ctx.fillStyle = '#ffc95c';
+      ctx.fillText(`${m.toFixed(1)} m${passed ? say(' · taller than', ' TALLER THAN') : ''}`, 80, retro ? 340 : 400);
+      if (passed) { ctx.fillStyle = '#f4efe6'; ctx.fillText(say(passed[1], passed[1].toUpperCase()), 80, retro ? 384 : 452); }
+      // link along the street
+      ctx.fillStyle = 'rgba(5,6,26,.6)'; ctx.fillRect(0, H - 96, W, 96);
+      ctx.fillStyle = '#f4efe6';
+      ctx.font = `${retro ? 400 : 500} ${retro ? 20 : 30}px ${mono}`;
+      ctx.textAlign = 'center';
+      if (retro) {
+        ctx.fillText('CAN YOU BEAT IT?', W / 2, H - 54);
+        ctx.font = '400 15px "Press Start 2P", monospace';
+        ctx.fillText('heidenreich.github.io/skyline-stack', W / 2, H - 22);
+      } else {
+        ctx.fillText('Can you beat it?  heidenreich.github.io/skyline-stack', W / 2, H - 38);
+      }
+    } finally {
+      ({ ctx, W, H, s, zoom, base, camY, stack, cur, debris, pops, ripples, PX, shakeT } = saved);
+    }
+    return c;
+  }
+  // Render ahead of time so the share sheet can open straight from the tap.
+  function prepareShare() {
+    const run = lastRun;
+    if (!run) return;
+    try { run.canvas = renderShare(run); } catch (e) { run.canvas = null; return; }
+    run.blob = new Promise(res => run.canvas.toBlob(res, 'image/png'));
+  }
+  const SITE = 'https://heidenreich.github.io/skyline-stack/';
+  async function shareTower() {
+    const run = lastRun;
+    if (!run || !run.blob) return;
+    const blob = await run.blob;
+    if (!blob) return;
+    const m = (run.floors * FLOOR_M).toFixed(1);
+    const text = `I built ${floorsText(run.floors)} (${m} m) in Skyline Stack. Can you beat it? ${SITE}`;
+    const file = new File([blob], `skyline-stack-${run.floors}-floors.png`, { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], text }); return; }
+      catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    // No share sheet (most desktop browsers): show the picture to save instead.
+    const url = URL.createObjectURL(blob);
+    $('shareImg').src = url;
+    $('shareSave').href = url;
+    $('shareSave').download = file.name;
+    shareBack = ui;
+    show('shareScreen');
+  }
+  let shareBack = null;
+  document.querySelectorAll('.share-btn').forEach(b => b.addEventListener('click', shareTower));
+  $('shareClose').addEventListener('click', () => show(shareBack === 'board' ? 'boardScreen' : 'overScreen'));
 
   // ---------- change the look ----------
   function renderLook() {

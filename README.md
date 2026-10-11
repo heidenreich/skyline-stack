@@ -8,6 +8,10 @@ Each floor slides in from the side. Tap to drop it. Whatever hangs over the edge
 
 Open `index.html` in any browser, or turn on GitHub Pages (Settings → Pages → Deploy from branch → `main` / root) and open the link on your phone. On a computer, press Space to drop a floor.
 
+## Share your tower
+
+After a game, tap **Share your tower** to send a picture of your finished building, with its height and the landmark it beat, in your current look.
+
 ## High scores
 
 Make the top 10 and you enter your initials, arcade style. Scores are saved in your phone's browser, so each phone keeps its own board.
