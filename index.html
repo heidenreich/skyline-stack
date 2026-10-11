@@ -315,7 +315,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
   // ---------- online high scores (Firebase Firestore over its REST API) ----------
   // Paste apiKey and projectId from the Firebase console. Both are public by design;
   // the Firestore security rules decide what may be written.
-  const FIREBASE = { apiKey: '', projectId: '' };
+  const FIREBASE = { apiKey: 'AIzaSyDd_ffbzDfK3DND1X2_CzflwCbIpiEFVlI', projectId: 'skyline-stack-ffef3' };
   const ONLINE = !!(FIREBASE.apiKey && FIREBASE.projectId);
   const FS = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents`;
   let world = null, worldState = ONLINE ? 'loading' : 'off'; // loading | ok | error | off
