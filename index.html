@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#0b1030">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
 <title>Skyline Stack</title>
 <meta name="description" content="A one-tap tower stacking game. How tall can you build it?">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
@@ -125,6 +128,16 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 .board li.you { color: var(--neon); animation: blink .9s steps(2, start) infinite; }
 .board .num { text-align: right; }
 .board .m { text-align: right; opacity: .6; font-size: 9px; }
+.install {
+  align-self: center; background: none; border: 0; padding: 6px 4px; cursor: pointer;
+  font: 500 12px/1.4 var(--mono); color: var(--lamp); text-decoration: underline; text-underline-offset: 3px;
+}
+.install:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+.install-hint { margin: 0; padding: 12px; border: 1px dashed var(--rule); font-size: 12px; line-height: 1.6; color: var(--ink); }
+.install-hint b { color: var(--lamp); font-weight: 600; }
+body.retro .install { font: 9px/1.6 var(--arcade); }
+body.retro .install-hint { font-size: 9px; line-height: 1.9; }
+body.retro .install-hint b { font-weight: 400; }
 .tabs { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
 .tabs button {
   height: 38px; background: transparent; border: 0; color: var(--ink-dim); cursor: pointer;
@@ -210,6 +223,8 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     <button class="go" id="startBtn" type="button" data-retro="PRESS START">Start building</button>
     <button class="ghost" id="startScores" type="button" data-retro="HI-SCORES">High scores</button>
     <button class="ghost mode-btn" type="button" aria-pressed="false" data-retro="MODERN MODE">Arcade mode</button>
+    <button class="install" id="installBtn" type="button" hidden data-retro="INSTALL ON HOME SCREEN">Install on your home screen</button>
+    <p class="install-hint" id="installHint" hidden data-retro="TAP &lt;b&gt;&#x2022;&#x2022;&#x2022;&lt;/b&gt; OR &lt;b&gt;SHARE&lt;/b&gt;, THEN &lt;b&gt;ADD TO HOME SCREEN&lt;/b&gt;. IT OPENS FULL SCREEN AND PLAYS OFFLINE.">In Safari, tap <b>&#x2022;&#x2022;&#x2022;</b> then <b>Share</b> (or the Share button <b aria-hidden="true">&#x2191;</b> if you see it), then <b>Add to Home Screen</b>. It opens full screen and plays without signal.</p>
   </div>
 </div>
 
@@ -925,6 +940,32 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
 
   resize(); makeScenery(); setMuted(muted); reset(); setRetro(retro);
   loadWorld();
+
+  // ---------- install as an app ----------
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  let installEvt = null;
+  // Android and desktop Chrome offer a real install prompt; iPhone needs the Share menu steps.
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    installEvt = e;
+    if (!standalone) $('installBtn').hidden = false;
+  });
+  if (isIOS && !standalone) $('installBtn').hidden = false;
+  $('installBtn').addEventListener('click', async () => {
+    if (installEvt) {
+      installEvt.prompt();
+      const choice = await installEvt.userChoice.catch(() => null);
+      installEvt = null;
+      if (choice && choice.outcome === 'accepted') $('installBtn').hidden = true;
+    } else {
+      $('installHint').hidden = !$('installHint').hidden;
+    }
+  });
+  window.addEventListener('appinstalled', () => { $('installBtn').hidden = true; $('installHint').hidden = true; });
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
   requestAnimationFrame(frame);
 })();
 </script>

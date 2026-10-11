@@ -12,6 +12,10 @@ Open `index.html` in any browser, or turn on GitHub Pages (Settings → Pages �
 
 Make the top 10 and you enter your initials, arcade style. Scores are saved in your phone's browser, so each phone keeps its own board.
 
+## Install it
+
+On iPhone: in Safari, tap ••• → Share → Add to Home Screen. On Android: tap **Install on your home screen** on the title screen, or Install app in Chrome's menu. Once installed it opens full screen and plays without a connection (the online board needs one).
+
 ## Online high scores
 
 The high-score screen can also show a shared board for everyone, stored in Firebase Firestore. To turn it on, put your project's `apiKey` and `projectId` in the `FIREBASE` setting in `index.html`, and paste `firestore.rules` into Firestore → Rules in the Firebase console. Without them, the game uses only the scores saved on each phone.
