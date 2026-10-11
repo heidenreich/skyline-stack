@@ -2,7 +2,7 @@
 // The page itself is network-first so updates show up right away; everything else
 // (icons, fonts) is served from the cache and refreshed in the background.
 // Online high scores always go to the network.
-const CACHE = 'skyline-stack-v1';
+const CACHE = 'skyline-stack-v2';
 const CORE = [
   './', './index.html', './manifest.webmanifest',
   './apple-touch-icon.png', './favicon-32.png', './icon-192.png', './icon-512.png', './icon-maskable-512.png'
@@ -26,7 +26,8 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
 
   if (req.mode === 'navigate') {
-    const network = fetch(req).then(res => {
+    // Always ask the server for the newest page; GitHub Pages lets browsers reuse it for 10 minutes otherwise.
+    const network = fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' }).then(res => {
       if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put('./index.html', copy)); }
       return res;
     }).catch(() => caches.match('./index.html'));
