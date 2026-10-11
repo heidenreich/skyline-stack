@@ -138,6 +138,22 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 body.retro .install { font: 9px/1.6 var(--arcade); }
 body.retro .install-hint { font-size: 9px; line-height: 1.9; }
 body.retro .install-hint b { font-weight: 400; }
+.btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.look-group { display: flex; flex-direction: column; gap: 8px; }
+.look-label { font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--ink-dim); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 6px 12px;
+  border: 1px solid var(--rule); border-radius: 999px; background: transparent; color: var(--ink);
+  font: 500 12px/1.2 var(--mono); cursor: pointer;
+}
+.chip[aria-pressed="true"] { background: var(--lamp); color: var(--lamp-ink); border-color: var(--lamp); }
+.chip:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+.swatch { display: inline-flex; border-radius: 3px; overflow: hidden; flex: none; }
+.swatch i { width: 6px; height: 14px; display: block; }
+body.retro .look-label { font-size: 9px; letter-spacing: .06em; color: var(--neon); }
+body.retro .chip { font: 9px/1.2 var(--arcade); text-transform: uppercase; border-radius: 0; }
+body.retro .swatch { border-radius: 0; }
 .tabs { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
 .tabs button {
   height: 38px; background: transparent; border: 0; color: var(--ink-dim); cursor: pointer;
@@ -221,10 +237,28 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     <p data-retro="TAP TO DROP EACH FLOOR. LAND 3 &lt;strong&gt;PERFECT&lt;/strong&gt; IN A ROW TO GROW WIDER!">Each floor slides in from the side. <strong>Tap to drop it.</strong> Whatever hangs over the edge gets cut off. Land it dead-on three times in a row and your tower gets wider again.</p>
     <div class="stats"><span data-retro="HI">Your best</span><b id="startBest">No tower yet</b></div>
     <button class="go" id="startBtn" type="button" data-retro="PRESS START">Start building</button>
-    <button class="ghost" id="startScores" type="button" data-retro="HI-SCORES">High scores</button>
+    <div class="btn-row">
+      <button class="ghost" id="startScores" type="button" data-retro="HI-SCORES">High scores</button>
+      <button class="ghost" id="lookBtn" type="button" data-retro="STAGE">Change look</button>
+    </div>
     <button class="ghost mode-btn" type="button" aria-pressed="false" data-retro="MODERN MODE">Arcade mode</button>
     <button class="install" id="installBtn" type="button" hidden data-retro="INSTALL ON HOME SCREEN">Install on your home screen</button>
     <p class="install-hint" id="installHint" hidden data-retro="TAP &lt;b&gt;&#x2022;&#x2022;&#x2022;&lt;/b&gt; OR &lt;b&gt;SHARE&lt;/b&gt;, THEN &lt;b&gt;ADD TO HOME SCREEN&lt;/b&gt;. IT OPENS FULL SCREEN AND PLAYS OFFLINE.">In Safari, tap <b>&#x2022;&#x2022;&#x2022;</b> then <b>Share</b> (or the Share button <b aria-hidden="true">&#x2191;</b> if you see it), then <b>Add to Home Screen</b>. It opens full screen and plays without signal.</p>
+  </div>
+</div>
+
+<div class="overlay top" id="lookScreen" hidden>
+  <div class="card">
+    <div class="eyebrow" data-retro="SELECT STAGE">Change the look</div>
+    <div class="look-group">
+      <span class="look-label" data-retro="CITY">Skyline</span>
+      <div class="chips" id="cityChips" role="group" aria-label="Skyline"></div>
+    </div>
+    <div class="look-group">
+      <span class="look-label" data-retro="SKY">Palette</span>
+      <div class="chips" id="palChips" role="group" aria-label="Palette"></div>
+    </div>
+    <button class="go" id="lookDone" type="button" data-retro="OK">Done</button>
   </div>
 </div>
 
@@ -278,11 +312,200 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
   const LANDMARKS = [
     [38, 'Christ the Redeemer'], [56, 'the Leaning Tower of Pisa'], [93, 'the Statue of Liberty'],
     [139, 'the Great Pyramid of Giza'], [169, 'the Washington Monument'], [330, 'the Eiffel Tower'],
-    [443, 'the Empire State Building'], [828, 'the Burj Khalifa']
+    [443, 'the Empire State Building'], [553, 'the CN Tower'], [828, 'the Burj Khalifa']
   ];
-  const SKY = [ // [t, top, bottom]
+  const SKY = [ // [t, top, bottom] for Dusk; other palettes build theirs in skyFrames()
     [0, '#1d1650', '#e9825a'], [0.35, '#0e1238', '#5a3474'], [0.7, '#060a24', '#1b1a4d'], [1, '#010208', '#0a0e2c']
   ];
+
+  // ---------- palettes ----------
+  const PALETTES = {
+    dusk: {
+      name: 'Dusk', desc: 'Purple sky fading to a warm orange horizon, slate floors, yellow windows.', hue: true,
+      sky: ['#1d1650', '#5a3474', '#e9825a'], stars: .6,
+      far: '#0a0c26', farLit: 'rgba(255,201,92,.55)', mountain: 'rgba(40,30,80,.55)', ground: '#05061a', street: 'rgba(255,201,92,.5)',
+      floors: ['#2b3a63', '#3a3268', '#30406b', '#41316a'], edge: 'rgba(255,255,255,.18)',
+      win: ['#ffd36e'], winOff: 'rgba(10,12,30,.7)', lobby: '#f2c35c', glow: '#ffd36e'
+    },
+    blue: {
+      name: 'Blue hour', desc: 'Just after sunset. Deep navy into steel blue, a rising moon, cool white office lights.',
+      sky: ['#06122e', '#123a6b', '#5d93c2'], stars: .45, orb: { x: .8, y: .14, r: 14, c: '#eef4ff', halo: 'rgba(220,235,255,.18)' },
+      far: '#081830', farLit: 'rgba(200,230,255,.5)', mountain: 'rgba(30,60,100,.6)', ground: '#040b19', street: 'rgba(170,215,255,.45)',
+      floors: ['#1d3350', '#22405f', '#1a2c47', '#284a6b'], edge: 'rgba(200,230,255,.24)',
+      win: ['#d6ecff', '#fff6dc'], winOff: 'rgba(5,12,28,.75)', lobby: '#a9d6ff', glow: '#d6ecff'
+    },
+    golden: {
+      name: 'Golden hour', desc: 'Low sun on the horizon. Brick and sandstone floors with windows catching the light.',
+      sky: ['#f2a65a', '#ec7a55', '#b84a5a'], sky2: true, stars: 0, orb: { x: .25, y: .7, r: 46, c: '#ffe1a0', halo: 'rgba(255,225,160,.25)' },
+      far: '#5a2638', farLit: 'rgba(255,225,160,.35)', mountain: 'rgba(150,70,80,.55)', ground: '#2a1220', street: 'rgba(255,220,150,.6)',
+      floors: ['#7a3b2e', '#8c4a36', '#6b3328', '#9a5a3f'], edge: 'rgba(255,220,170,.35)',
+      win: ['#ffe9b0'], winOff: 'rgba(60,20,15,.6)', lobby: '#ffd98a', glow: '#fff1c4'
+    },
+    neon: {
+      name: 'Neon night', desc: 'Synthwave. Near-black sky, a striped magenta sun, dark towers lit in cyan and pink.',
+      sky: ['#05010f', '#1a0633', '#4a0b5c'], stars: .5, orb: { x: .74, y: .6, r: 58, c: '#ff3d8b', c2: '#ffb347', stripes: true },
+      far: '#250b40', farLit: 'rgba(46,242,255,.6)', mountain: 'rgba(80,10,90,.6)', ground: '#05010c', street: '#ff3d8b',
+      floors: ['#120a24', '#170c30', '#1b1036'], edge: '#ff3d8b',
+      win: ['#2ef2ff', '#ff4fb0'], winOff: 'rgba(255,255,255,.04)', lobby: '#ff4fb0', glow: '#2ef2ff'
+    },
+    day: {
+      name: 'Daytime', desc: 'Clear blue sky, a few clouds, glass towers reflecting the sky. Brightest and most cheerful.',
+      sky: ['#2f7fcf', '#72b6ec', '#d3ebf8'], stars: 0, orb: { x: .8, y: .26, r: 20, c: '#fff8d6', halo: 'rgba(255,250,220,.35)' }, clouds: true,
+      far: '#8fb2cc', farLit: null, mountain: 'rgba(120,150,180,.55)', ground: '#3f4a57', street: '#f3f3f3',
+      floors: ['#2f5d7c', '#3b6f91', '#284f6a', '#46809f'], edge: 'rgba(255,255,255,.4)',
+      win: ['#c6e6f8'], winOff: '#1f4560', lobby: '#eaf6ff', glow: '#ffffff'
+    },
+    dawn: {
+      name: 'Dawn', desc: 'Soft pastels. Periwinkle to pink to peach, lavender floors, the last few lights still on.',
+      sky: ['#56649f', '#d79ec4', '#ffd5b2'], stars: .15, orb: { x: .7, y: .74, r: 22, c: '#fff1d8', halo: 'rgba(255,240,215,.3)' },
+      far: '#4c4880', farLit: 'rgba(255,240,200,.4)', mountain: 'rgba(110,100,160,.5)', ground: '#2a2548', street: 'rgba(255,230,200,.6)',
+      floors: ['#6d6fa8', '#8a7bb5', '#7d8fc0', '#9b86b8'], edge: 'rgba(255,255,255,.3)',
+      win: ['#fff1c7'], winOff: 'rgba(40,30,70,.45)', lobby: '#ffe2a8', glow: '#fff1c7'
+    }
+  };
+
+  // ---------- skylines ----------
+  const CITIES = {
+    anywhere: { name: 'Anywhere', desc: 'A made-up city of plain towers, no landmarks.' },
+    nyc: { name: 'New York', desc: 'Empire State Building, the Chrysler Building and One World Trade Center behind a dense Midtown.' },
+    toronto: { name: 'Toronto', desc: 'The CN Tower, with its pod and long antenna, beside the Rogers Centre dome and the Financial District towers.' },
+    chicago: { name: 'Chicago', desc: 'Willis Tower with its twin antennas and the tapered John Hancock Center.' },
+    paris: { name: 'Paris', desc: 'The Eiffel Tower over low rooftops, with the lone Tour Montparnasse.' },
+    seattle: { name: 'Seattle', desc: 'The Space Needle with Mount Rainier in the distance.' },
+    dubai: { name: 'Dubai', desc: 'The Burj Khalifa, the tallest building in the world, over the desert towers.' }
+  };
+
+  function rng(seed) { let s = seed; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
+
+  // Fill a stretch of the skyline with plain boxes; windows dotted in the palette's far-light color.
+  function fillers(ctx, pal, base, k, x0, x1, seed, minH, maxH, roof) {
+    const r = rng(seed);
+    let x = x0;
+    while (x < x1) {
+      const w = (18 + r() * 34) * k, h = (minH + Math.pow(r(), 1.5) * (maxH - minH)) * k;
+      ctx.fillStyle = pal.far;
+      ctx.fillRect(x, base - h, w, h + 1);
+      if (roof === 'mansard') {
+        ctx.beginPath(); ctx.moveTo(x - 1, base - h); ctx.lineTo(x + 4 * k, base - h - 9 * k); ctx.lineTo(x + w - 4 * k, base - h - 9 * k); ctx.lineTo(x + w + 1, base - h); ctx.fill();
+      }
+      if (pal.farLit) {
+        ctx.fillStyle = pal.farLit;
+        for (let yy = 8 * k; yy < h - 6 * k; yy += 10 * k) for (let xx = 4 * k; xx < w - 4 * k; xx += 7 * k) if (r() < .17) ctx.fillRect(x + xx, base - h + yy, 2 * k, 3 * k);
+      }
+      x += w + (1 + r() * 6) * k;
+    }
+  }
+  // A building made of stacked, centered blocks: [[width, height], ...] from the bottom up.
+  function stacked(ctx, cx, base, k, parts) {
+    let y = base;
+    for (const [w, h] of parts) { ctx.fillRect(cx - w * k / 2, y - h * k, w * k, h * k + 1); y -= h * k; }
+    return y;
+  }
+  function trapezoid(ctx, cx, base, k, wb, wt, h) {
+    ctx.beginPath();
+    ctx.moveTo(cx - wb * k / 2, base + 1); ctx.lineTo(cx - wt * k / 2, base - h * k);
+    ctx.lineTo(cx + wt * k / 2, base - h * k); ctx.lineTo(cx + wb * k / 2, base + 1); ctx.fill();
+  }
+
+  const CITY_DRAW = {
+    nyc(ctx, pal, W, base, k) {
+      fillers(ctx, pal, base, k, -10, W + 10, 11, 40, 150);
+      ctx.fillStyle = pal.far;
+      // Empire State Building: setbacks and a mast
+      stacked(ctx, W * .13, base, k, [[48, 190], [36, 38], [24, 28], [13, 22], [4, 52]]);
+      // Chrysler Building: shaft, stepped crown, needle
+      const cx = W * .87;
+      let y = stacked(ctx, cx, base, k, [[34, 205]]);
+      for (let i = 0; i < 4; i++) { const w = (30 - i * 7) * k; ctx.beginPath(); ctx.moveTo(cx - w / 2, y); ctx.quadraticCurveTo(cx, y - 26 * k, cx + w / 2, y); ctx.fill(); ctx.fillRect(cx - w / 2, y - 9 * k, w, 9 * k); y -= 11 * k; }
+      ctx.fillRect(cx - 1.5 * k, y - 34 * k, 3 * k, 36 * k);
+      // One World Trade Center: tapering tower and spire, far back on the right
+      trapezoid(ctx, W * .66, base, k, 46, 22, 245); ctx.fillRect(W * .66 - 1.5 * k, base - 315 * k, 3 * k, 72 * k);
+    },
+    toronto(ctx, pal, W, base, k) {
+      fillers(ctx, pal, base, k, -10, W + 10, 67, 36, 165);
+      ctx.fillStyle = pal.far;
+      // CN Tower: tapering shaft on a flared base, main pod, SkyPod, antenna
+      const cx = W * .15;
+      ctx.beginPath();
+      ctx.moveTo(cx - 20 * k, base + 1); ctx.lineTo(cx - 9 * k, base - 40 * k); ctx.lineTo(cx - 5 * k, base - 214 * k);
+      ctx.lineTo(cx + 5 * k, base - 214 * k); ctx.lineTo(cx + 9 * k, base - 40 * k); ctx.lineTo(cx + 20 * k, base + 1); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx, base - 222 * k, 21 * k, 9 * k, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillRect(cx - 14 * k, base - 230 * k, 28 * k, 6 * k);
+      ctx.fillRect(cx - 4 * k, base - 272 * k, 8 * k, 44 * k);
+      ctx.beginPath(); ctx.ellipse(cx, base - 274 * k, 8 * k, 4 * k, 0, 0, Math.PI * 2); ctx.fill();
+      trapezoid(ctx, cx, base - 276 * k, k, 6, 2, 34);
+      ctx.fillRect(cx - 1 * k, base - 345 * k, 2 * k, 38 * k);
+      // Rogers Centre: low ribbed dome at the foot of the tower, on the right
+      const dx = W * .84;
+      ctx.fillRect(dx - 46 * k, base - 22 * k, 92 * k, 23 * k);
+      ctx.beginPath(); ctx.ellipse(dx, base - 22 * k, 46 * k, 22 * k, 0, Math.PI, 0); ctx.fill();
+      ctx.strokeStyle = pal.sky[2]; ctx.globalAlpha = .25; ctx.lineWidth = Math.max(1, k);
+      for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.ellipse(dx, base - 22 * k, Math.abs(i) * 11 * k + .1, 22 * k, 0, Math.PI, 0); ctx.stroke(); }
+      ctx.globalAlpha = 1;
+    },
+    chicago(ctx, pal, W, base, k) {
+      fillers(ctx, pal, base, k, -10, W + 10, 23, 30, 130);
+      ctx.fillStyle = pal.far;
+      // Willis Tower: bundled tubes ending at different heights, two antennas
+      const wx = W * .14, tube = 15;
+      [[-1.5, 170], [-.5, 255], [.5, 228], [1.5, 196]].forEach(([o, h]) => ctx.fillRect(wx + o * tube * k - tube * k / 2, base - h * k, tube * k + .5, h * k + 1));
+      ctx.fillRect(wx - 9 * k, base - 305 * k, 3 * k, 52 * k); ctx.fillRect(wx + 1 * k, base - 300 * k, 3 * k, 46 * k);
+      // John Hancock Center: tapered box, two antennas
+      const hx = W * .86;
+      trapezoid(ctx, hx, base, k, 46, 30, 225);
+      ctx.fillRect(hx - 9 * k, base - 272 * k, 3 * k, 48 * k); ctx.fillRect(hx + 6 * k, base - 272 * k, 3 * k, 48 * k);
+    },
+    paris(ctx, pal, W, base, k) {
+      fillers(ctx, pal, base, k, -10, W + 10, 37, 26, 52, 'mansard');
+      ctx.fillStyle = pal.far;
+      // Tour Montparnasse, alone on the right
+      ctx.fillRect(W * .86 - 16 * k, base - 160 * k, 32 * k, 161 * k);
+      // Eiffel Tower: flared legs with an arch, two platforms, antenna
+      const ex = W * .16, s = k * 1.05;
+      const P = [[-56, 0], [-38, -62], [-29, -70], [-27, -78], [-17, -150], [-14, -156], [-13, -162], [-5, -262], [-3, -268], [-1.4, -300], [1.4, -300], [3, -268], [5, -262], [13, -162], [14, -156], [17, -150], [27, -78], [29, -70], [38, -62], [56, 0]];
+      ctx.beginPath();
+      P.forEach(([x, y], i) => i ? ctx.lineTo(ex + x * s, base + y * s) : ctx.moveTo(ex + x * s, base + y * s + 1));
+      ctx.closePath();
+      // the arch between the legs
+      ctx.moveTo(ex - 36 * s, base + 1); ctx.quadraticCurveTo(ex, base - 64 * s, ex + 36 * s, base + 1); ctx.closePath();
+      ctx.fill('evenodd');
+      ctx.fillRect(ex - 33 * s, base - 72 * s, 66 * s, 5 * s);
+      ctx.fillRect(ex - 18 * s, base - 158 * s, 36 * s, 4 * s);
+    },
+    seattle(ctx, pal, W, base, k) {
+      // Mount Rainier, far behind everything
+      ctx.fillStyle = pal.mountain;
+      ctx.beginPath(); ctx.moveTo(W * .35, base); ctx.lineTo(W * .72, base - 150 * k); ctx.lineTo(W * .78, base - 158 * k); ctx.lineTo(W * 1.15, base); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.45)';
+      ctx.beginPath(); ctx.moveTo(W * .66, base - 128 * k); ctx.lineTo(W * .72, base - 150 * k); ctx.lineTo(W * .78, base - 158 * k); ctx.lineTo(W * .84, base - 130 * k); ctx.lineTo(W * .79, base - 136 * k); ctx.lineTo(W * .74, base - 126 * k); ctx.lineTo(W * .7, base - 134 * k); ctx.fill();
+      fillers(ctx, pal, base, k, -10, W + 10, 41, 28, 120);
+      ctx.fillStyle = pal.far;
+      // Space Needle: pinched legs, saucer, spire
+      const nx = W * .14;
+      ctx.beginPath(); ctx.moveTo(nx - 18 * k, base + 1); ctx.lineTo(nx - 3 * k, base - 120 * k); ctx.lineTo(nx - 8 * k, base - 190 * k);
+      ctx.lineTo(nx + 8 * k, base - 190 * k); ctx.lineTo(nx + 3 * k, base - 120 * k); ctx.lineTo(nx + 18 * k, base + 1); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(nx, base - 196 * k, 36 * k, 8 * k, 0, 0, Math.PI * 2); ctx.fill();
+      trapezoid(ctx, nx, base - 200 * k, k, 30, 10, 16);
+      ctx.fillRect(nx - 1.2 * k, base - 262 * k, 2.4 * k, 48 * k);
+    },
+    dubai(ctx, pal, W, base, k) {
+      fillers(ctx, pal, base, k, -10, W + 10, 53, 34, 140);
+      ctx.fillStyle = pal.far;
+      // Burj Khalifa: tiers stepping in toward a long spire
+      stacked(ctx, W * .15, base, k, [[50, 70], [40, 62], [31, 56], [23, 48], [16, 42], [10, 36], [6, 32], [3, 44], [1.6, 28]]);
+      // a twisted-looking tower on the right
+      trapezoid(ctx, W * .86, base, k, 30, 20, 200);
+    }
+  };
+
+  // The player's chosen look. "Anywhere" keeps the game's own generated city.
+  let city = 'anywhere', palKey = 'dusk';
+  try {
+    const c = localStorage.getItem('skyline-city'), p = localStorage.getItem('skyline-palette');
+    if (CITIES[c]) city = c;
+    if (PALETTES[p]) palKey = p;
+  } catch (e) {}
+  let P = PALETTES[palKey];
 
   let W, H, dpr, s;
   let state = 'ready', stack = [], cur = null, debris = [], pops = [];
@@ -453,7 +676,22 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
   const lerp3 = (A, B, t) => A.map((v, i) => Math.round(v + (B[i] - v) * t));
   const rgb = a => `rgb(${a.join(',')})`;
   const mix = (A, B, t) => rgb(lerp3(A, B, t));
+  let skyCache = null;
+  function skyFrames() {
+    if (P.hue) return SKY;
+    if (skyCache && skyCache.key === palKey) return skyCache.frames;
+    const h = hexToRgb, hex = a => '#' + a.map(v => v.toString(16).padStart(2, '0')).join('');
+    const frames = [
+      [0, P.sky[0], P.sky[2]],
+      [0.35, hex(lerp3(h(P.sky[0]), h('#060a24'), 0.45)), P.sky[1]],
+      [0.7, '#060a24', hex(lerp3(h(P.sky[1]), h('#0a0e2c'), 0.65))],
+      [1, '#010208', '#0a0e2c']
+    ];
+    skyCache = { key: palKey, frames };
+    return frames;
+  }
   function skyAt(t) {
+    const SKY = skyFrames();
     for (let i = 1; i < SKY.length; i++) {
       if (t <= SKY[i][0]) {
         const [t0, a0, b0] = SKY[i - 1], [t1, a1, b1] = SKY[i];
@@ -589,7 +827,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
   }
 
   function show(id) {
-    for (const s of ['startScreen', 'overScreen', 'entryScreen', 'boardScreen']) $(s).hidden = s !== id;
+    for (const s of ['startScreen', 'overScreen', 'entryScreen', 'boardScreen', 'lookScreen']) $(s).hidden = s !== id;
     ui = id ? id.replace('Screen', '') : null;
   }
 
@@ -736,7 +974,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
 
   // ---------- loop ----------
   function update(dt) {
-    if (state === 'ready') {
+    if (state === 'ready' && ui !== 'look') {
       attractT += dt;
       if (attractT > (attract === 'demo' ? 10 : 6)) setAttract(attract === 'start' ? 'demo' : attract === 'demo' ? 'board' : 'start');
     }
@@ -763,7 +1001,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     pops = pops.filter(p => p.life > 0);
     for (const b of stack) if (b.glow > 0) b.glow = Math.max(0, b.glow - dt * 1.6);
 
-    let zT = 1, baseT = 0.78, camT;
+    let zT = 1, baseT = ui === 'look' ? 0.97 : 0.78, camT;
     if (state === 'over') {
       const towerH = (stack.length + 1) * BH;
       const avail = H * 0.9 - Math.min(H * 0.48, 400);
@@ -783,7 +1021,8 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     let cx = wx(b.x + b.w / 2), cy = wy(y + BH / 2);
     if (cy + h < -40 || cy - h > H + 40) return;
     if (retro && !rot) { cx = snap(cx); cy = snap(cy); }
-    const pal = retro ? (b.lobby ? ['#3c3c7c', '#7c7cfc', '#14143c'] : RPAL[b.seed % RPAL.length]) : null;
+    const pal = retro ? (b.lobby ? ['#3c3c7c', '#7c7cfc', '#14143c'] : RPAL[b.seed % RPAL.length])
+      : P.hue ? null : [P.floors[(b.lobby ? 0 : b.seed) % P.floors.length], P.edge, 'rgba(0,0,0,.3)'];
     ctx.save();
     ctx.translate(cx, cy);
     if (rot) ctx.rotate(rot);
@@ -794,7 +1033,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     ctx.fillStyle = pal ? pal[2] : `hsl(${b.h} 30% 12%)`;
     fr(-w / 2, h / 2 - Math.max(1, 1.5 * S), w, Math.max(1, 1.5 * S));
     if (b.lobby) {
-      ctx.fillStyle = retro ? '#f8d878' : 'hsl(40 80% 62%)';
+      ctx.fillStyle = retro ? '#f8d878' : pal ? P.lobby : 'hsl(40 80% 62%)';
       fr(-w / 2 + 8 * S, -h / 2 + 6 * S, w - 16 * S, h - 9 * S);
       ctx.fillStyle = pal ? pal[0] : `hsl(${b.h} 28% 16%)`;
       for (let i = 1; i < 6; i++) fr(-w / 2 + 8 * S + (w - 16 * S) * i / 6 - S, -h / 2 + 6 * S, 2 * S, h - 9 * S);
@@ -803,14 +1042,18 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
       const k0 = Math.ceil((b.x + 2 - b.a) / WIN_GAP), k1 = Math.floor((b.x + b.w - 2 - WIN_W - b.a) / WIN_GAP);
       for (let k = k0; k <= k1; k++) {
         const on = rnd(b.seed, k) < b.lit;
-        ctx.fillStyle = on ? (retro ? '#f8d878' : 'hsl(42 95% 68%)') : (retro ? '#101028' : `hsl(${b.h} 30% 15%)`);
+        ctx.fillStyle = retro ? (on ? '#f8d878' : '#101028')
+          : pal ? (on ? P.win[(b.seed + k) % P.win.length] : P.winOff)
+          : (on ? 'hsl(42 95% 68%)' : `hsl(${b.h} 30% 15%)`);
         fr((b.a + k * WIN_GAP - mid) * S, top, WIN_W * S, wh * S);
       }
     }
     if (b.glow > 0) {
-      ctx.strokeStyle = retro ? `rgba(255, 255, 255, ${b.glow})` : `rgba(255, 214, 120, ${b.glow})`;
+      ctx.globalAlpha = b.glow;
+      ctx.strokeStyle = retro ? '#ffffff' : P.glow;
       ctx.lineWidth = retro ? PX : 2 * S;
       ctx.strokeRect(-w / 2, -h / 2, w, h);
+      ctx.globalAlpha = 1;
     }
     ctx.restore();
   }
@@ -834,7 +1077,8 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
       ctx.fillStyle = g; fr(0, 0, W, H);
     }
 
-    const starA = 0.25 + 0.75 * clamp((alt - 0.1) / 0.5, 0, 1);
+    const starBase = P.stars * 0.42;
+    const starA = starBase + (1 - starBase) * clamp((alt - 0.1) / 0.5, 0, 1);
     ctx.fillStyle = '#fff';
     for (const st of stars) {
       const y = ((st.y * H * 1.2 + camY * S * 0.04 * st.z) % (H * 1.2)) - H * 0.1;
@@ -844,26 +1088,56 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     }
     ctx.globalAlpha = 1;
 
-    // distant city, slower parallax
+    // sun or moon and clouds sink slowly as the tower climbs
     const farBase = bl + camY * S * 0.6, fs = S * 0.75;
-    if (farBase - 220 * fs < H) {
-      ctx.fillStyle = '#0a0c26';
-      for (const b of skyline) fr(W / 2 + b.x * fs, farBase - b.h * fs, b.w * fs, b.h * fs + 2);
-      ctx.fillStyle = 'rgba(255, 201, 92, .55)';
-      for (const b of skyline) {
-        for (let r = 8; r < b.h - 6; r += 11) for (let c = 5; c < b.w - 5; c += 8) {
-          if (rnd(b.seed + r, c) < 0.16) fr(W / 2 + (b.x + c) * fs, farBase - (b.h - r) * fs, 2.2 * fs, 3 * fs);
+    const o = P.orb;
+    if (o) {
+      const k = S, ox = o.x * W, oy = o.y * bl + camY * S * 0.3, r = o.r * k;
+      if (oy - r * 4 < H) {
+        if (o.halo) { const hg = ctx.createRadialGradient(ox, oy, r, ox, oy, r * 3.2); hg.addColorStop(0, o.halo); hg.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = hg; ctx.fillRect(ox - r * 4, oy - r * 4, r * 8, r * 8); }
+        if (o.stripes) {
+          const sg = ctx.createLinearGradient(0, oy - r, 0, oy + r); sg.addColorStop(0, o.c2); sg.addColorStop(.6, o.c);
+          ctx.save(); ctx.beginPath(); ctx.arc(ox, oy, r, 0, Math.PI * 2); ctx.clip();
+          ctx.fillStyle = sg; ctx.fillRect(ox - r, oy - r, r * 2, r * 2);
+          ctx.fillStyle = P.sky[2];
+          for (let i = 0; i < 6; i++) fr(ox - r, oy + r * (.05 + i * .17), r * 2, (1.5 + i * 1.3) * k);
+          ctx.restore();
+        } else { ctx.fillStyle = o.c; ctx.beginPath(); ctx.arc(ox, oy, r, 0, Math.PI * 2); ctx.fill(); }
+      }
+    }
+    if (P.clouds) {
+      ctx.fillStyle = 'rgba(255,255,255,.75)';
+      [[.2, .3, 1], [.62, .4, .8], [.34, .5, .6]].forEach(([cx, cy, sc]) => {
+        const x = cx * W, y = cy * bl + camY * S * 0.45, c = sc * S;
+        if (y - 20 * c > H) return;
+        ctx.beginPath(); ctx.ellipse(x, y, 34 * c, 10 * c, 0, 0, Math.PI * 2); ctx.ellipse(x - 14 * c, y - 6 * c, 16 * c, 11 * c, 0, 0, Math.PI * 2); ctx.ellipse(x + 10 * c, y - 9 * c, 18 * c, 13 * c, 0, 0, Math.PI * 2); ctx.fill();
+      });
+    }
+
+    // distant city, slower parallax
+    if (city === 'anywhere') {
+      if (farBase - 220 * fs < H) {
+        ctx.fillStyle = P.far;
+        for (const b of skyline) fr(W / 2 + b.x * fs, farBase - b.h * fs, b.w * fs, b.h * fs + 2);
+        if (P.farLit) {
+          ctx.fillStyle = P.farLit;
+          for (const b of skyline) {
+            for (let r = 8; r < b.h - 6; r += 11) for (let c = 5; c < b.w - 5; c += 8) {
+              if (rnd(b.seed + r, c) < 0.16) fr(W / 2 + (b.x + c) * fs, farBase - (b.h - r) * fs, 2.2 * fs, 3 * fs);
+            }
+          }
         }
       }
-      ctx.fillStyle = '#05061a';
-      fr(0, farBase, W, H);
+    } else if (farBase - 360 * S < H) {
+      CITY_DRAW[city](ctx, P, W, farBase, S * 0.8);
     }
+    if (farBase < H) { ctx.fillStyle = P.ground; fr(0, farBase, W, H); }
 
     // street
     const gy = wy(0);
     if (gy < H) {
-      ctx.fillStyle = '#05061a'; fr(0, gy, W, H - gy);
-      ctx.fillStyle = 'rgba(255, 201, 92, .5)'; fr(0, gy, W, Math.max(1, S));
+      ctx.fillStyle = P.ground; fr(0, gy, W, H - gy);
+      ctx.fillStyle = P.street; fr(0, gy, W, Math.max(1, S));
       ctx.fillStyle = 'rgba(244, 239, 230, .14)';
       for (let x = -400; x < 400; x += 36) fr(wx(x), gy + 14 * S, 18 * S, 2 * S);
     }
@@ -940,6 +1214,27 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
 
   resize(); makeScenery(); setMuted(muted); reset(); setRetro(retro);
   loadWorld();
+
+  // ---------- change the look ----------
+  function renderLook() {
+    $('cityChips').innerHTML = Object.entries(CITIES).map(([key, c]) =>
+      `<button class="chip" type="button" data-city="${key}" aria-pressed="${key === city}">${c.name}</button>`).join('');
+    $('palChips').innerHTML = Object.entries(PALETTES).map(([key, p]) =>
+      `<button class="chip" type="button" data-pal="${key}" aria-pressed="${key === palKey}"><span class="swatch" aria-hidden="true">${[p.sky[0], p.sky[2], p.floors[0], p.win[0]].map(c => `<i style="background:${c}"></i>`).join('')}</span>${p.name}</button>`).join('');
+  }
+  function setLook(c, p) {
+    city = c; palKey = p; P = PALETTES[p];
+    try { localStorage.setItem('skyline-city', c); localStorage.setItem('skyline-palette', p); } catch (e) {}
+    renderLook();
+  }
+  $('lookBtn').addEventListener('click', () => { renderLook(); show('lookScreen'); });
+  $('lookDone').addEventListener('click', () => { attractT = 0; show('startScreen'); });
+  $('lookScreen').addEventListener('click', e => {
+    const b = e.target.closest('button[data-city], button[data-pal]');
+    if (!b) return;
+    audio(); tone(660, 0.05, 'square', 0.04);
+    setLook(b.dataset.city || city, b.dataset.pal || palKey);
+  });
 
   // ---------- install as an app ----------
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;

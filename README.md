@@ -20,6 +20,10 @@ On iPhone: in Safari, tap ••• → Share → Add to Home Screen. On Android
 
 The high-score screen can also show a shared board for everyone, stored in Firebase Firestore. To turn it on, put your project's `apiKey` and `projectId` in the `FIREBASE` setting in `index.html`, and paste `firestore.rules` into Firestore → Rules in the Firebase console. Without them, the game uses only the scores saved on each phone.
 
+## Change the look
+
+Tap **Change look** on the title screen to pick a skyline (Anywhere, New York, Toronto, Chicago, Paris, Seattle, Dubai) and a palette (Dusk, Blue hour, Golden hour, Neon night, Daytime, Dawn). Every palette fades toward starry space as your tower climbs. Your choice is remembered.
+
 ## Arcade mode
 
 Tap **Arcade mode** on the title or game-over screen for an 8-bit look: pixel graphics, CRT scanlines and chiptune jingles. Tap **Modern mode** to switch back. Your choice is remembered.
