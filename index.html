@@ -222,7 +222,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
   <div class="floors" id="floors">0<span data-retro="1UP">FLOORS</span></div>
   <div class="hud-right">
     <div class="meters" id="meters">0.0 m</div>
-    <button class="mute" id="mute" type="button" aria-pressed="false">Sound on</button>
+    <button class="mute" id="mute" type="button">Sound: on</button>
   </div>
 </div>
 
@@ -729,8 +729,14 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
   let actx = null;
   function audio() {
     if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; } }
-    if (actx.state === 'suspended') actx.resume();
+    if (actx.state !== 'running') actx.resume().catch(() => {});
   }
+  // On iPhone, "playback" lets sound play with the silent switch on, once the player has chosen sound on.
+  function audioSession() {
+    try { if (navigator.audioSession) navigator.audioSession.type = muted ? 'ambient' : 'playback'; } catch (e) {}
+  }
+  // iPhones only let sound start from a finished tap (touchend or click), not from the moment a finger lands.
+  ['touchend', 'click', 'keydown'].forEach(ev => window.addEventListener(ev, audio, { passive: true }));
   function tone(f, d, type, vol, slide) {
     if (muted || !actx) return;
     const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
@@ -967,8 +973,9 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
 
   function setMuted(v) {
     muted = v;
-    $('mute').textContent = muted ? 'Sound off' : 'Sound on';
-    $('mute').setAttribute('aria-pressed', String(muted));
+    $('mute').textContent = muted ? 'Sound: off' : 'Sound: on';
+    $('mute').setAttribute('aria-label', muted ? 'Sound is off. Turn sound on' : 'Sound is on. Turn sound off');
+    audioSession();
     try { localStorage.setItem('skyline-muted', muted ? '1' : '0'); } catch (e) {}
   }
 
