@@ -1362,14 +1362,14 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     try { run.canvas = renderShare(run); } catch (e) { run.canvas = null; return; }
     run.blob = new Promise(res => run.canvas.toBlob(res, 'image/png'));
   }
-  const SITE = 'https://heidenreich.github.io/skyline-stack/';
   async function shareTower() {
     const run = lastRun;
     if (!run || !run.blob) return;
     const blob = await run.blob;
     if (!blob) return;
     const m = (run.floors * FLOOR_M).toFixed(1);
-    const text = `I built ${floorsText(run.floors)} (${m} m) in Skyline Stack. Can you beat it? ${SITE}`;
+    // No link in the text: Messages would add a second, link-preview picture. The address is on the picture.
+    const text = `I built ${floorsText(run.floors)} (${m} m) in Skyline Stack. Can you beat it?`;
     const file = new File([blob], `skyline-stack-${run.floors}-floors.png`, { type: 'image/png' });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try { await navigator.share({ files: [file], text }); return; }
