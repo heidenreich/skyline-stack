@@ -22,7 +22,7 @@ On iPhone: in Safari, tap ••• → Share → Add to Home Screen. On Android
 
 ## Online high scores
 
-The high-score screen can also show a shared board for everyone, stored in Firebase Firestore. To turn it on, put your project's `apiKey` and `projectId` in the `FIREBASE` setting in `index.html`, and paste `firestore.rules` into Firestore → Rules in the Firebase console. Without them, the game uses only the scores saved on each phone.
+The high-score screen can also show shared boards, one for phones and tablets and one for computers (a key press is easier than a tap), stored in Firebase Firestore. To turn it on, put your project's `apiKey` and `projectId` in the `FIREBASE` setting in `index.html`, and paste `firestore.rules` into Firestore → Rules in the Firebase console. Without them, the game uses only the scores saved on each phone.
 
 ## Change the look
 

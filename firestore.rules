@@ -2,14 +2,16 @@ rules_version = '2';
 
 // Skyline Stack high scores.
 // Anyone can read the board. A new score must be exactly three capital letters,
-// a whole number of floors from 1 to 400, and a timestamp close to now.
+// a whole number of floors from 1 to 400, a timestamp close to now, and may say
+// which kind of device it came from: "p" (phone or tablet) or "c" (computer).
 // Nobody can edit or delete scores from the game; do that in the Firebase console.
 service cloud.firestore {
   match /databases/{database}/documents {
     match /scores/{scoreId} {
       allow read: if true;
       allow create: if request.resource.data.keys().hasAll(['n', 'f', 't'])
-        && request.resource.data.keys().hasOnly(['n', 'f', 't'])
+        && request.resource.data.keys().hasOnly(['n', 'f', 't', 'd'])
+        && (!('d' in request.resource.data) || request.resource.data.d in ['p', 'c'])
         && request.resource.data.n is string
         && request.resource.data.n.matches('^[A-Z]{3}$')
         && request.resource.data.f is int

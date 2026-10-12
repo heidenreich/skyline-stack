@@ -170,7 +170,7 @@ body.retro .swatch { border-radius: 0; }
 .share-card img { display: block; width: 100%; max-width: 100%; max-height: 52vh; object-fit: contain; border-radius: 6px; -webkit-touch-callout: default; user-select: auto; -webkit-user-select: auto; }
 .share-save { display: grid; place-items: center; text-decoration: none; }
 body.retro .share-card img { border-radius: 0; }
-.tabs { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
 .tabs button {
   height: 38px; background: transparent; border: 0; color: var(--ink-dim); cursor: pointer;
   font: 500 11px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase;
@@ -296,8 +296,9 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     <div class="eyebrow" id="boardEyebrow">Top 10 on this phone</div>
     <h1 class="arcade-title">High Scores</h1>
     <div class="tabs" id="boardTabs" role="tablist" hidden>
-      <button type="button" role="tab" data-tab="local" aria-selected="true" data-retro="LOCAL">This phone</button>
-      <button type="button" role="tab" data-tab="world" aria-selected="false" data-retro="WORLD">Everyone</button>
+      <button type="button" role="tab" data-tab="local" aria-selected="true" id="tabLocal">This phone</button>
+      <button type="button" role="tab" data-tab="p" aria-selected="false" data-retro="PHONES">Phones</button>
+      <button type="button" role="tab" data-tab="c" aria-selected="false" data-retro="COMPUTERS">Computers</button>
     </div>
     <ol class="board" id="board"></ol>
     <p class="board-note" id="boardNote" hidden></p>
@@ -590,8 +591,13 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
   const FIREBASE = { apiKey: 'AIzaSyDd_ffbzDfK3DND1X2_CzflwCbIpiEFVlI', projectId: 'skyline-stack-ffef3' };
   const ONLINE = !!(FIREBASE.apiKey && FIREBASE.projectId);
   const FS = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents`;
-  let world = null, worldState = ONLINE ? 'loading' : 'off'; // loading | ok | error | off
-  let boardTab = 'local', boardHi = { local: -1, world: null }, boardLabel = '';
+  // Phones and computers get separate online boards: a key or click is quicker than a tap.
+  // Tablets count as phones. Scores saved before this split have no device and count as phones.
+  const DEV = matchMedia('(pointer: coarse)').matches && navigator.maxTouchPoints > 0 ? 'p' : 'c';
+  const HERE = DEV === 'c' ? 'this computer' : 'this phone';
+  const DEV_NAME = { p: ['phones', 'PHONES'], c: ['computers', 'COMPUTERS'] };
+  let world = null, worldState = ONLINE ? 'loading' : 'off'; // loading | ok | error | off; world = { p: [...], c: [...] }
+  let boardTab = 'local', boardHi = { local: -1, world: null }, boardLabel = ''; // boardTab: local | p | c
 
   async function fsPost(path, body) {
     const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 8000);
@@ -611,13 +617,14 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
       const rows = await fsPost(':runQuery', { structuredQuery: {
         from: [{ collectionId: 'scores' }],
         orderBy: [{ field: { fieldPath: 'f' }, direction: 'DESCENDING' }],
-        limit: 30
+        limit: 150
       } });
-      world = rows.filter(r => r.document).map(r => {
+      const all = rows.filter(r => r.document).map(r => {
         const d = r.document.fields || {};
-        return { id: r.document.name.split('/').pop(), n: d.n && d.n.stringValue, f: d.f ? +d.f.integerValue : 0, t: (d.t && d.t.timestampValue) || '' };
+        return { id: r.document.name.split('/').pop(), n: d.n && d.n.stringValue, f: d.f ? +d.f.integerValue : 0, t: (d.t && d.t.timestampValue) || '', d: d.d && d.d.stringValue === 'c' ? 'c' : 'p' };
       }).filter(x => /^[A-Z]{3}$/.test(x.n) && x.f > 0)
-        .sort((a, b) => b.f - a.f || (a.t < b.t ? -1 : 1)).slice(0, 10);
+        .sort((a, b) => b.f - a.f || (a.t < b.t ? -1 : 1));
+      world = { p: all.filter(x => x.d === 'p').slice(0, 10), c: all.filter(x => x.d === 'c').slice(0, 10) };
       worldState = 'ok';
     } catch (e) { worldState = 'error'; }
     if (ui === 'board') renderBoard();
@@ -625,15 +632,16 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
 
   async function postWorld(n, f) {
     const doc = await fsPost('/scores', { fields: {
-      n: { stringValue: n }, f: { integerValue: String(f) }, t: { timestampValue: new Date().toISOString() }
+      n: { stringValue: n }, f: { integerValue: String(f) }, t: { timestampValue: new Date().toISOString() }, d: { stringValue: DEV }
     } });
     return doc.name.split('/').pop();
   }
 
   function worldRank(f) {
     if (worldState !== 'ok' || f <= 0) return -1;
-    let i = world.findIndex(x => f > x.f);
-    if (i === -1) i = world.length;
+    const list = world[DEV];
+    let i = list.findIndex(x => f > x.f);
+    if (i === -1) i = list.length;
     return i < 10 ? i : -1;
   }
 
@@ -690,7 +698,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     attract = phase; attractT = 0;
     $('attract').hidden = phase !== 'demo';
     if (phase === 'demo') { reset(); show(null); }
-    else if (phase === 'board') { boardHi = { local: -1, world: null }; showBoard(say('Start building', 'PRESS START'), worldState === 'ok' && world.length ? 'world' : 'local'); }
+    else if (phase === 'board') { boardHi = { local: -1, world: null }; showBoard(say('Start building', 'PRESS START'), worldState === 'ok' && world[DEV].length ? DEV : 'local'); }
     else { if (ui !== 'start') reset(); show('startScreen'); }
   }
 
@@ -902,8 +910,8 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     pending = { floors, rank, wrank };
     slot = 0;
     const where = wrank >= 0
-      ? say(`${ordinal(wrank + 1)} for everyone`, `${ordinal(wrank + 1)} WORLD`)
-      : say(`${ordinal(rank + 1)} on this phone`, `${ordinal(rank + 1)}`);
+      ? say(`${ordinal(wrank + 1)} for all ${DEV_NAME[DEV][0]}`, `${ordinal(wrank + 1)} ${DEV_NAME[DEV][1]}`)
+      : say(`${ordinal(rank + 1)} on ${HERE}`, `${ordinal(rank + 1)}`);
     $('entryRank').textContent = say(`New high score · ${where}`, `NEW HIGH SCORE! ${where}`);
     $('entryFloors').innerHTML = `${floors} <small>${floors === 1 ? 'floor' : 'floors'}</small>`;
     renderInitials();
@@ -949,7 +957,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     if (lastRun) { lastRun.name = name; prepareShare(); }
     jingle(523, [0, 4, 7, 12], 90, 0.12, 0.07);
     boardHi = { local: rank, world: null };
-    showBoard(say('Build again', 'PLAY AGAIN'), wrank >= 0 ? 'world' : 'local');
+    showBoard(say('Build again', 'PLAY AGAIN'), wrank >= 0 ? DEV : 'local');
     if (wrank >= 0) {
       worldState = 'saving'; renderBoard();
       postWorld(name, floors)
@@ -967,15 +975,18 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
   }
 
   function renderBoard() {
-    const isWorld = boardTab === 'world';
+    const isWorld = boardTab !== 'local';
     $('boardTabs').hidden = !ONLINE;
     $('boardTabs').querySelectorAll('button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === boardTab)));
-    $('boardEyebrow').textContent = isWorld ? say('Top 10 everywhere', 'WORLD RECORDS') : say('Top 10 on this phone', 'BEST BUILDERS');
+    $('tabLocal').textContent = say(DEV === 'c' ? 'This computer' : 'This phone', 'LOCAL');
+    $('boardEyebrow').textContent = isWorld
+      ? say(`Top 10 on all ${DEV_NAME[boardTab][0]}`, `${DEV_NAME[boardTab][1]} RECORDS`)
+      : say(`Top 10 on ${HERE}`, 'BEST BUILDERS');
     let rows = scores, note = '';
     if (isWorld) {
-      rows = worldState === 'ok' ? world : [];
+      rows = worldState === 'ok' ? world[boardTab] : [];
       if (worldState === 'loading' || worldState === 'saving') note = say(worldState === 'saving' ? 'Saving your score…' : 'Loading scores…', worldState === 'saving' ? 'SAVING…' : 'LOADING…');
-      else if (worldState === 'error') note = say("Can't reach the online board right now. Scores on this phone are still saved.", 'OFFLINE. LOCAL SCORES ARE SAFE.');
+      else if (worldState === 'error') note = say(`Can't reach the online board right now. Scores on ${HERE} are still saved.`, 'OFFLINE. LOCAL SCORES ARE SAFE.');
       else if (!rows.length) note = say('No scores yet. Be the first on the board.', 'NO SCORES YET. BE THE FIRST!');
     }
     $('boardNote').textContent = note;
@@ -1281,7 +1292,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     const b = e.target.closest('button[data-tab]');
     if (!b) return;
     boardTab = b.dataset.tab;
-    if (boardTab === 'world' && worldState !== 'saving') { if (worldState !== 'ok') worldState = 'loading'; loadWorld(); }
+    if (boardTab !== 'local' && worldState !== 'saving') { if (worldState !== 'ok') worldState = 'loading'; loadWorld(); }
     renderBoard();
   });
   $('initials').addEventListener('click', e => {
