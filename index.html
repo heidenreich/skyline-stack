@@ -67,10 +67,12 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 .streak b { margin-left: 6px; font: 500 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-dim); }
 .streak.wide b { color: var(--neon); }
 .streak.broke { animation: broke .3s; }
+.streak.flash i.full { animation: pip .35s ease-out; }
+@keyframes pip { 0% { transform: scaleY(1.4) scaleX(1); filter: brightness(1); } 40% { transform: scaleY(2.4) scaleX(1.25); filter: brightness(1.8); } 100% { transform: scaleY(1.4) scaleX(1); filter: brightness(1); } }
 @keyframes broke { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
 body.retro .streak i { border-radius: 0; height: 8px; }
 body.retro .streak b { font: 8px/1 var(--arcade); letter-spacing: 0; }
-@media (prefers-reduced-motion: reduce) { .streak.broke { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .streak.broke, .streak.flash i.full { animation: none; } }
 .hud-right { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
 .meters { font-size: 14px; font-weight: 600; letter-spacing: .04em; color: var(--lamp); font-variant-numeric: tabular-nums; }
 .mute {
@@ -824,13 +826,13 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     if (Math.abs(diff) <= TOL) {
       combo++;
       placed = { ...cur, x: top.x, a: cur.a - diff, w: top.w, glow: 1 };
-      let label = combo > 1 ? say(`PERFECT ×${combo}`, `PERFECT x${combo}`) : 'PERFECT';
       if (combo >= 3 && placed.w < BASE_W) {
         const grow = Math.min(BASE_W - placed.w, 10);
         placed.x -= grow / 2; placed.w += grow;
-        label += say(' · WIDER', '+');
       }
-      pops.push({ text: label, x: placed.x + placed.w / 2, y: y + BH, life: 1 });
+      // No floating text over the tower: it got in the way of the next floor up high.
+      // The streak meter in the corner flashes instead.
+      flashStreak();
       ripples.push({ x: placed.x, w: placed.w, y, life: 1 });
       if (combo >= 3) ripples.push({ x: placed.x, w: placed.w, y, life: 1.35 });
       if (!reduceMotion) { shakeAmp = Math.min(2 + combo * 0.9, 8); shakeT = 0.2; }
@@ -1026,6 +1028,10 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     el.classList.toggle('on', combo > 0);
     el.classList.toggle('wide', wide);
     $('streakLabel').textContent = wide ? say(`Widening ×${combo}`, `WIDER x${combo}`) : say('Perfect streak', 'PERFECT');
+  }
+  function flashStreak() {
+    const el = $('streak');
+    el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
   }
   function breakStreak() {
     const el = $('streak');
