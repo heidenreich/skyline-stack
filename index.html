@@ -925,6 +925,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
       if (live) breakStreak();
     }
     delete placed.dir;
+    placed.landed = true;
     stack.push(placed);
     if (live) checkLandmark();
     updateHud();
@@ -1225,6 +1226,31 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
       fr(-w / 2 + 8 * S, -h / 2 + 6 * S, w - 16 * S, h - 9 * S);
       ctx.fillStyle = pal ? pal[0] : `hsl(${b.h} 28% 16%)`;
       for (let i = 1; i < 6; i++) fr(-w / 2 + 8 * S + (w - 16 * S) * i / 6 - S, -h / 2 + 6 * S, 2 * S, h - 9 * S);
+    } else if (b.crane) {
+      // A mechanical floor, like the plant-room bands real skyscrapers have every 10-20 storeys:
+      // no windows, a darker face and horizontal louvers split into bays.
+      ctx.fillStyle = retro ? '#545454' : 'rgba(0, 0, 0, .28)';
+      fr(-w / 2, -h / 2 + Math.max(1, 1.3 * S), w, h - Math.max(1, 1.3 * S) - Math.max(1, 1.5 * S));
+      ctx.fillStyle = retro ? '#a8a8a8' : pal ? P.edge : `hsl(${b.h} 30% 42%)`;
+      ctx.globalAlpha = retro ? 1 : 0.7;
+      const inset = 4 * S;
+      for (let r = 0; r < 4; r++) fr(-w / 2 + inset, -h / 2 + (5 + r * 4.2) * S, w - inset * 2, Math.max(1, 1.4 * S));
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = retro ? '#545454' : pal ? pal[0] : `hsl(${b.h} 28% 23%)`;
+      const bays = Math.max(2, Math.round(b.w / 40));
+      for (let i = 1; i < bays; i++) fr(-w / 2 + (w * i) / bays - S, -h / 2 + 3 * S, 2 * S, h - 6 * S);
+      if (!b.landed) {
+        // yellow-and-black hazard band along the bottom while it hangs from the crane
+        const bh = 4 * S, by = h / 2 - bh;
+        ctx.save();
+        ctx.beginPath(); ctx.rect(-w / 2, by, w, bh); ctx.clip();
+        ctx.fillStyle = retro ? '#fcfc54' : '#f5c400'; ctx.fillRect(-w / 2, by, w, bh);
+        ctx.fillStyle = '#1a1a1a';
+        for (let x = -w / 2 - bh; x < w / 2 + bh; x += 8 * S) {
+          ctx.beginPath(); ctx.moveTo(x, by + bh); ctx.lineTo(x + 4 * S, by + bh); ctx.lineTo(x + 4 * S + bh, by); ctx.lineTo(x + bh, by); ctx.fill();
+        }
+        ctx.restore();
+      }
     } else {
       const wh = BH * 0.44, top = -h / 2 + BH * 0.3 * S, mid = b.x + b.w / 2;
       const k0 = Math.ceil((b.x + 2 - b.a) / WIN_GAP), k1 = Math.floor((b.x + b.w - 2 - WIN_W - b.a) / WIN_GAP);
@@ -1340,11 +1366,18 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     if (cur) {
       const cy = stack.length * BH + cur.fy;
       if (cur.crane && !cur.falling) {
-        const hx = wx(cur.x + cur.w / 2), hy = wy(cy + BH) - 4 * S;
-        ctx.fillStyle = retro ? '#d8d8d8' : 'rgba(244, 239, 230, .55)';
+        const ccx = wx(cur.x + cur.w / 2), ccy = wy(cy + BH / 2), rot = cur.rot || 0;
+        const hw = cur.w * S / 2, hh = BH * S / 2, cos = Math.cos(rot), sin = Math.sin(rot);
+        const corner = sx => [ccx + sx * cos + hh * sin, ccy + sx * sin - hh * cos]; // top corners after the tilt
+        const [lx, ly] = corner(-hw * 0.92), [rx, ry] = corner(hw * 0.92);
+        const hx = ccx + (hh + 22 * S) * sin, hy = ccy - (hh + 22 * S) * cos; // hook above the middle
+        const line = retro ? '#d8d8d8' : 'rgba(244, 239, 230, .6)';
+        ctx.fillStyle = line;
         fr(hx - Math.max(1, 0.75 * S), -10, Math.max(PX, 1.5 * S), hy + 10);
+        ctx.strokeStyle = line; ctx.lineWidth = Math.max(PX, 1.3 * S);
+        ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(hx, hy); ctx.lineTo(rx, ry); ctx.stroke();
         ctx.fillStyle = retro ? '#fcfc54' : P.glow;
-        fr(hx - 5 * S, hy - 2 * S, 10 * S, 6 * S);
+        fr(hx - 4 * S, hy - 5 * S, 8 * S, 6 * S);
       }
       paintBlock(cur, cy, cur.rot || 0, S, wx, wy);
     }
