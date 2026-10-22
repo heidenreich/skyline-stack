@@ -71,6 +71,10 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 @keyframes pip { 0% { transform: scaleY(1.4) scaleX(1); filter: brightness(1); } 40% { transform: scaleY(2.4) scaleX(1.25); filter: brightness(1.8); } 100% { transform: scaleY(1.4) scaleX(1); filter: brightness(1); } }
 @keyframes broke { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
 body.retro .streak i { border-radius: 0; height: 8px; }
+.crane-hint { font: 600 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--lamp); }
+.crane-hint.now { animation: blink 1s steps(2, start) infinite; }
+body.retro .crane-hint { font: 8px/1 var(--arcade); letter-spacing: 0; }
+@media (prefers-reduced-motion: reduce) { .crane-hint.now { animation: none; } }
 body.retro .streak b { font: 8px/1 var(--arcade); letter-spacing: 0; }
 @media (prefers-reduced-motion: reduce) { .streak.broke, .streak.flash i.full { animation: none; } }
 .hud-right { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
@@ -241,6 +245,7 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
   <div class="hud-left">
     <div class="floors" id="floors">0<span data-retro="1UP">FLOORS</span></div>
     <div class="streak" id="streak" aria-hidden="true"><i></i><i></i><i></i><b id="streakLabel">Perfect streak</b></div>
+    <div class="crane-hint" id="craneHint" hidden></div>
   </div>
   <div class="hud-right">
     <div class="meters" id="meters">0.0 m</div>
@@ -775,9 +780,32 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     const fromLeft = n % 2 === 1;
     const w = top.w;
     const x = fromLeft ? -AMP - w / 2 : AMP - w / 2;
-    cur = { x, w, a: x + 4, h: (205 + n * 9) % 360, seed: seedN++, lit: 0.35 + rnd(n, 5) * 0.5, glow: 0, dir: fromLeft ? 1 : -1 };
+    cur = { x, w, a: x + 4, h: (205 + n * 9) % 360, seed: seedN++, lit: 0.35 + rnd(n, 5) * 0.5, glow: 0, dir: fromLeft ? 1 : -1, fy: 0, rot: 0 };
+    // Every 10th floor is a crane drop: it swings on a cable, and a tap releases it.
+    if (n % CRANE_EVERY === 0) {
+      cur.crane = true;
+      cur.phase = fromLeft ? -Math.PI / 2 : Math.PI / 2;
+      cur.x = Math.sin(cur.phase) * CRANE_R - w / 2;
+      cur.a = cur.x + 4;
+      cur.fy = HOVER;
+    }
     // Where the demo player will drop this floor: usually dead-on, sometimes a bit off.
     cur.demoOff = Math.random() < 0.6 ? 0 : (Math.random() < 0.5 ? -1 : 1) * (10 + Math.random() * 18);
+    updateCraneHint();
+  }
+  const CRANE_EVERY = 10, HOVER = BH * 2.2, CRANE_R = AMP * 0.8;
+  const craneSpeed = () => speed() * 0.85 / CRANE_R; // swing rate, radians per second
+
+  // "Crane in 3… 2… 1" as one approaches, then a reminder while it swings.
+  function updateCraneHint() {
+    const el = $('craneHint');
+    const d = (CRANE_EVERY - (stack.length % CRANE_EVERY)) % CRANE_EVERY;
+    let text = '';
+    if (cur && cur.crane && !cur.falling) text = say('Crane drop · tap to release', 'CRANE! TAP TO DROP');
+    else if (d >= 1 && d <= 3 && state === 'play') text = say(`Crane in ${d}`, `CRANE IN ${d}`);
+    el.textContent = text;
+    el.hidden = !text;
+    el.classList.toggle('now', !!(cur && cur.crane));
   }
 
   function speed() { return Math.min(115 + (stack.length - 1) * 5.5, 340); }
@@ -839,6 +867,24 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
   });
 
   function drop(tapTime) {
+    if (!cur) return;
+    if (cur.crane) {
+      if (cur.falling) return;
+      if (tapTime) {
+        const lag = Math.min(0.05, Math.max(0, (tapTime - last) / 1000));
+        cur.phase += craneSpeed() * lag;
+        cur.x = Math.sin(cur.phase) * CRANE_R - cur.w / 2;
+        cur.a = cur.x + 4;
+      }
+      cur.falling = true; cur.vy = 140;
+      if (state === 'play') tone(880, 0.05, 'square', 0.04, 0.5);
+      updateCraneHint();
+      return;
+    }
+    land(tapTime);
+  }
+
+  function land(tapTime) {
     if (tapTime && cur) {
       // At low frame rates (iPhone Low Power Mode runs at 30 fps) the last drawn position can be
       // a whole floor-step behind the tap. Move the floor on to where it was when the finger landed.
@@ -859,15 +905,14 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     if (Math.abs(diff) <= TOL) {
       combo++;
       placed = { ...cur, x: top.x, a: cur.a - diff, w: top.w, glow: 1 };
-      if (combo >= 3 && placed.w < BASE_W) {
-        const grow = Math.min(BASE_W - placed.w, 10);
-        placed.x -= grow / 2; placed.w += grow;
-      }
+      // Three perfects in a row widen the tower; a perfect crane drop always does, and stacks with the streak.
+      const grow = Math.min(BASE_W - placed.w, (combo >= 3 ? 10 : 0) + (cur.crane ? 10 : 0));
+      if (grow > 0) { placed.x -= grow / 2; placed.w += grow; }
       // No floating text over the tower: it got in the way of the next floor up high.
       // The streak meter in the corner flashes instead.
       flashStreak();
       ripples.push({ x: placed.x, w: placed.w, y, life: 1 });
-      if (combo >= 3) ripples.push({ x: placed.x, w: placed.w, y, life: 1.35 });
+      if (combo >= 3 || cur.crane) ripples.push({ x: placed.x, w: placed.w, y, life: 1.35 });
       if (!reduceMotion) { shakeAmp = Math.min(2 + combo * 0.9, 8); shakeT = 0.2; }
       if (live) { perfectSound(combo); buzz(18); }
     } else {
@@ -903,7 +948,8 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
 
   function gameOver() {
     state = 'over';
-    debris.push({ ...cur, y: stack.length * BH, vx: cur.dir * speed() * 0.35, vy: 60, rot: 0, vr: cur.dir * 2.4 });
+    const swing = cur.crane ? 0 : cur.dir;
+    debris.push({ ...cur, y: stack.length * BH, vx: swing * speed() * 0.35, vy: 60, rot: 0, vr: (swing || 1) * 2.4 });
     cur = null;
     if (retro) jingle(392, [0, -2, -4, -7, -12], 170, 0.14, 0.08);
     else tone(240, 0.6, 'sawtooth', 0.08, 0.25);
@@ -1104,16 +1150,31 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
     }
     const demo = state === 'ready' && attract === 'demo';
     if (cur) {
-      const top = stack[stack.length - 1], before = cur.x - top.x - cur.demoOff;
-      cur.x += cur.dir * speed() * dt;
-      const c = cur.x + cur.w / 2;
-      if (c > AMP) { cur.x -= (c - AMP); cur.dir = -1; }
-      if (c < -AMP) { cur.x += (-AMP - c); cur.dir = 1; }
-      cur.a = cur.x + 4;
-      if (demo) {
+      const top = stack[stack.length - 1], before = cur.x - top.x - cur.demoOff, watched = cur;
+      if (cur.crane) {
+        if (cur.falling) {
+          cur.vy += 1600 * dt;
+          cur.fy -= cur.vy * dt;
+          cur.rot *= Math.max(0, 1 - dt * 14);
+          if (cur.fy <= 0) { cur.fy = 0; cur.rot = 0; land(); }
+        } else {
+          cur.phase += craneSpeed() * dt;
+          cur.x = Math.sin(cur.phase) * CRANE_R - cur.w / 2;
+          cur.rot = -Math.cos(cur.phase) * 0.07;
+          cur.fy = HOVER + Math.sin(cur.phase * 2) * 2;
+          cur.a = cur.x + 4;
+        }
+      } else {
+        cur.x += cur.dir * speed() * dt;
+        const c = cur.x + cur.w / 2;
+        if (c > AMP) { cur.x -= (c - AMP); cur.dir = -1; }
+        if (c < -AMP) { cur.x += (-AMP - c); cur.dir = 1; }
+        cur.a = cur.x + 4;
+      }
+      if (demo && cur === watched && !cur.falling) {
         const after = cur.x - top.x - cur.demoOff;
         if (before * after <= 0) {
-          if (!cur.demoOff) { cur.a -= after; cur.x -= after; } // the demo player never misses a perfect
+          if (!cur.demoOff) { cur.a -= after; cur.x -= after; cur.rot = 0; } // the demo player never misses a perfect
           drop();
           if (stack.length > 16 || stack[stack.length - 1].w < 60) reset();
         }
@@ -1276,7 +1337,17 @@ body.retro .slot button.arrow, body.retro .letter { border-radius: 0; }
       ctx.translate(snap(Math.sin(t * 70) * shakeAmp * 0.35 * k), snap(Math.abs(Math.sin(t * 45)) * shakeAmp * k));
     }
     for (let i = 0; i < stack.length; i++) paintBlock(stack[i], i * BH, 0, S, wx, wy);
-    if (cur) paintBlock(cur, stack.length * BH, 0, S, wx, wy);
+    if (cur) {
+      const cy = stack.length * BH + cur.fy;
+      if (cur.crane && !cur.falling) {
+        const hx = wx(cur.x + cur.w / 2), hy = wy(cy + BH) - 4 * S;
+        ctx.fillStyle = retro ? '#d8d8d8' : 'rgba(244, 239, 230, .55)';
+        fr(hx - Math.max(1, 0.75 * S), -10, Math.max(PX, 1.5 * S), hy + 10);
+        ctx.fillStyle = retro ? '#fcfc54' : P.glow;
+        fr(hx - 5 * S, hy - 2 * S, 10 * S, 6 * S);
+      }
+      paintBlock(cur, cy, cur.rot || 0, S, wx, wy);
+    }
     for (const d of debris) paintBlock(d, d.y, d.rot, S, wx, wy);
     for (const r of ripples) {
       const grow = (1 - Math.min(1, r.life)) * 26 * S;

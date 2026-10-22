@@ -8,6 +8,10 @@ Each floor slides in from the side. Tap to drop it. Whatever hangs over the edge
 
 Open `index.html` in any browser, or turn on GitHub Pages (Settings → Pages → Deploy from branch → `main` / root) and open the link on your phone. On a computer, press Space to drop a floor.
 
+## Crane drops
+
+Every 10th floor hangs from a crane and swings like a pendulum. Tap to release it and it falls onto the tower. The corner counts down ("Crane in 3… 2… 1") as one approaches. A perfect crane drop counts toward your streak and always widens the tower, on top of the usual three-in-a-row widening.
+
 ## Share your tower
 
 After a game, tap **Share your tower** to send a picture of your finished building, with its height and the landmark it beat, in your current look.
